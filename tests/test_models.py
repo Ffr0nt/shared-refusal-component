@@ -95,3 +95,22 @@ def test_load_builds_bf16_model_freezes_and_warms_up(monkeypatch):
                        "device_map": "auto", "torch_dtype": torch.bfloat16}
     assert m.grad is False
     assert m.traced == ["Hello"]
+
+
+def test_prompts_fill_template():
+    fam = {"template": "<u>{instruction}</u>", "refusal_toks": [0]}
+    assert models.prompts(fam, ["a", "b"]) == ["<u>a</u>", "<u>b</u>"]
+
+
+def test_refusal_score_matches_fork_formula():
+    logits = torch.randn(3, 10, generator=torch.Generator().manual_seed(0))
+    toks = [2, 5]
+    p = torch.softmax(logits.double(), -1)[:, toks].sum(-1)
+    expected = torch.log(p + 1e-8) - torch.log(1 - p + 1e-8)
+    assert torch.allclose(models.refusal_score(logits, toks), expected)
+
+
+def test_refusal_score_sign():
+    logits = torch.tensor([[10.0, 0.0, 0.0], [-10.0, 0.0, 0.0]])
+    s = models.refusal_score(logits, [0])
+    assert s[0] > 0 > s[1]

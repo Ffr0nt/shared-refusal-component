@@ -25,24 +25,52 @@ splits:
   seed: 0
   harmless_src: data/saladbench_splits/harmless_train.json   # относительно форка
 
-# Одна точка (pos, layer) на все домены: select_direction на объединённом val (шаг 01)
+# Одна точка (pos, layer) на все домены: select_direction на объединённом val (этап 1)
 # по DIM объединённой выборки (среднее DIM доменов). Пишется в manifest.json.
 
-# RDO, одномерные конусы; 20 разных сидов
+# Этап 1, RDO: одномерные конусы, 20 разных сидов. Гиперпараметры rdo.py — все явно
+# (сейчас совпадают с его значениями по умолчанию, на которых посчитан прогон 12.10).
 rdo:
   seeds:
     O1: [1, 2, 3, 4, 5]
     O2: [6, 7, 8, 9, 10]
     O5: [11, 12, 13, 14, 15]
     O6: [16, 17, 18, 19, 20]
+  hparams:
+    dtype: bfloat16
+    epochs: 1
+    lr: 0.01
+    batch_size: 1
+    effective_batch_size: 16
+    patience: 5
+    n_lr_reduce: 2
+    n_sample: 8
+    fixed_samples: 8
+    sampling_method: hypersphere
+    ablation_lambda: 1
+    addition_lambda: 0.2
+    retain_lambda: 1
+    target_generation_batch_size: 512
+    filter_data: true
+    filter_batch_size: 32
 
-# Общая компонента: первый собственный вектор P = (1/N) sum v v^T по всем 24 векторам
+# Этап 2: общая компонента — первый собственный вектор P = (1/N) sum v v^T по направлениям
+# варианта. Вариант — отбор из набора этапа 1: methods / domains / exclude (по именам).
 component:
   n_null: 1000
   null_seed: 0
+  variants:
+    all: {}                         # все DIM и RDO, равные веса
+    dim_only: {methods: [dim]}
+    rdo_only: {methods: [rdo]}
 
-# Аблация: прокси-ASR (refusal_metric < 0) на harmful_test, KL на harmless_test
+# Этап 3: аблация. Проверяются компоненты перечисленных вариантов (w:<вариант>), при base —
+# все направления этапа 1, и n_rand случайных. Прокси-ASR (refusal_score < 0) на harmful_test,
+# KL на harmless_test.
 ablation:
-  alphas: [0.25, 0.5, 0.75, 1.0]
+  components: [all]
+  base: true
   n_rand: 3
+  rand_seed: 0
+  alphas: [0.25, 0.5, 0.75, 1.0]
   batch_size: 16

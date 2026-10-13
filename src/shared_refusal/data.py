@@ -16,7 +16,7 @@ import os
 
 import pandas as pd
 
-from .common import FORK, read_json
+from .artifacts import FORK, read_json
 
 SPLITS = ("train", "val", "test")
 

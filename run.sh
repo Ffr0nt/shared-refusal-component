@@ -3,7 +3,7 @@
 #
 #   bash run.sh 00                                   # CPU
 #   CUDA_VISIBLE_DEVICES=0 bash run.sh 01            # GPU
-#   CUDA_VISIBLE_DEVICES=0 bash run.sh 02 --domains O1 O2
+#   CUDA_VISIBLE_DEVICES=0 bash run.sh 01 --domains O1 O2   # RDO только этих доменов
 #
 # Env: CONFIG (configs/qwen2.5-3b.yaml), FORK (../geometry-of-refusal), HF_HOME.
 set -euo pipefail

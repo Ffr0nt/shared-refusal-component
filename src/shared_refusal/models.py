@@ -1,8 +1,8 @@
-"""Всё, что зависит от семейства модели.
+"""Всё, что зависит от семейства модели. Единственный источник шаблона и refusal-токенов.
 
-Новое семейство = запись в FAMILIES (ключ ищется подстрокой в имени модели). Шаблоны и
-refusal-токены — те же, что в rdo.py форка: обучение RDO и наши замеры должны видеть модель
-одинаково. Шаг 01 берёт модель через construct_model_base форка — там свой список семейств.
+Новое семейство = запись в FAMILIES (ключ ищется подстрокой в имени модели). Шаблон и токены
+передаются в rdo.py форка аргументами (directions/rdo.py), а DIM-пайплайн форка сверяется с ними
+(directions/dim.py) — обучение RDO, DIM и наши замеры видят модель одинаково.
 """
 import torch
 
@@ -30,6 +30,18 @@ def family(model_name):
         if k in name:
             return f
     raise ValueError(f"нет шаблона и refusal-токенов для {model_name} — добавь семейство в FAMILIES")
+
+
+def prompts(fam, instructions):
+    return [fam["template"].format(instruction=x) for x in instructions]
+
+
+def refusal_score(logits, refusal_toks, eps=1e-8):
+    """Прокси отказа по первому токену: log p(refusal) - log(1 - p(refusal)) по последней
+    позиции; > 0 — модель скорее отказывает. Совпадает со scoring.refusal_metric форка."""
+    probs = torch.softmax(logits.to(torch.float64), dim=-1)
+    p = probs[:, refusal_toks].sum(dim=-1)
+    return torch.log(p + eps) - torch.log(1 - p + eps)
 
 
 def load(model_name):
@@ -62,3 +74,19 @@ def ablate(model, v, a):
         layer.self_attn.output[0][:] -= a * projection_einops(at, v)
         mp = layer.mlp.output[:]
         layer.mlp.output[:] -= a * projection_einops(mp, v)
+
+
+def last_token_logits(model, prompts, v, a, batch_size):
+    """Логиты последней позиции [n, vocab] (float32, CPU) с аблацией v силы a во всех слоях;
+    v=None — без интервенции. Это forward для ablation.evaluate."""
+    if v is not None:
+        v = (v / v.norm()).to(model.dtype).to(model.device)
+    out = []
+    for i in range(0, len(prompts), batch_size):
+        with model.trace(prompts[i:i + batch_size]):
+            if v is not None:
+                ablate(model, v, a)
+            logits = model.lm_head.output[:, -1].save()
+        out.append(logits.value.detach().float().cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(out)

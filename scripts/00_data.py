@@ -1,4 +1,4 @@
-"""Шаг 00 — сплиты (CPU).
+"""Этап 0 — данные: сплиты по доменам (CPU).
 
 Для каждого домена (источник и колонки — секция dataset конфига; сейчас SALAD-Bench
 base_set, домен — 1-category) — непересекающиеся harmful_{train,val,test}.json одного
@@ -11,23 +11,19 @@ base_set, домен — 1-category) — непересекающиеся harmfu
 и sha256 каждого файла в manifest.json.
 """
 import argparse
-import hashlib
 import os
 
-from shared_refusal.common import load_config, splits_dir, update_manifest, write_json
+from shared_refusal.artifacts import Run, write_json
+from shared_refusal.config import file_sha256, load_config
 from shared_refusal.data import SPLITS, cut, load_harmful, load_harmless, stratified_sample
-
-
-def sha256(path):
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="configs/qwen2.5-3b.yaml")
+    ap.add_argument("--config", required=True)
     args = ap.parse_args()
     cfg = load_config(args.config)
+    run = Run.from_config(cfg)
     sc, dc = cfg["splits"], cfg["dataset"]
     sizes = {s: sc[f"n_{s}"] for s in SPLITS}
     total = sum(sizes.values())
@@ -47,18 +43,18 @@ def main():
         pool = df[df["domain"] == label]
         assert len(pool) >= total, f"{d}: пул {len(pool)} < {total}"
         sample = stratified_sample(pool, total, "stratum", sc["seed"])
-        out = splits_dir(cfg, d)
+        out = run.splits(d)
         for s, part in cut(sample, sizes).items():
             rows = [{"instruction": q, "source": f"{dc['name']}:{d}", "category": c}
                     for q, c in zip(part["text"], part["stratum"])]
             for harmtype, data in (("harmful", rows), ("harmless", harmless_splits[s])):
                 p = os.path.join(out, f"{harmtype}_{s}.json")
                 write_json(data, p)
-                manifest["sha256"][f"{d}/{harmtype}_{s}"] = sha256(p)
+                manifest["sha256"][f"{d}/{harmtype}_{s}"] = file_sha256(p)
         manifest["pool"][d] = len(pool)
         print(f"{d}: пул {len(pool)} -> {sizes}, страт {sample['stratum'].nunique()}")
 
-    update_manifest(cfg, "splits", manifest)
+    run.update_manifest("splits", manifest)
 
 
 if __name__ == "__main__":
