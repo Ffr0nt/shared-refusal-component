@@ -75,7 +75,7 @@ results it only reassembles the set.
 - `scripts/` — general logic: stages 00–05 (thin scripts on top of these modules, `--config` is
   required), `pipeline.sh` (stages in order for one config), `tmux.sh` (a launch file in tmux).
 - `configs/`, `launch/` — concrete runs, one pair per run.
-- `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)).
+- `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)), one document per experiment (e.g. [`docs/convergence.md`](docs/convergence.md)), figures in `docs/figures/`.
 - `tests/` — CPU tests for `src/` and the CPU stages, heavy parts (HF datasets, nnsight model,
   the fork) mocked:
 
