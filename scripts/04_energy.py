@@ -15,7 +15,8 @@ import os
 
 import torch
 
-from common import dim_dir, load_config, rdo_dir, results_dir, unit, update_manifest, write_json, write_report
+from shared_refusal.common import dim_dir, load_config, rdo_dir, results_dir, update_manifest, write_json, write_report
+from shared_refusal.geometry import unit
 
 
 def main():

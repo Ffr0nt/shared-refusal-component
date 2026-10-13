@@ -19,20 +19,9 @@ import os
 
 import torch
 
-from common import load_config, load_vectors, read_json, results_dir, splits_dir, write_json, write_report
-
-TEMPLATES = {
-    "qwen2.5": ("<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant."
-                "<|im_end|>\n<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"),
-}
-REFUSAL_TOKS = {"qwen2.5": [40, 2121]}   # 'I', 'As' — как в rdo.py
-
-
-def family(model):
-    for k in TEMPLATES:
-        if k in model.lower():
-            return k
-    raise ValueError(f"нет шаблона и refusal-токенов для {model}")
+from shared_refusal import models
+from shared_refusal.common import load_config, load_vectors, read_json, results_dir, splits_dir, write_json, write_report
+from shared_refusal.geometry import kl, random_directions
 
 
 def main():
@@ -43,16 +32,11 @@ def main():
     ac = cfg["ablation"]
     domains = list(cfg["domains"])
 
-    from nnsight import LanguageModel
-    from scoring import projection_einops, refusal_metric
+    from scoring import refusal_metric
 
-    fam = family(cfg["model"])
-    template, refusal_toks = TEMPLATES[fam], REFUSAL_TOKS[fam]
-    model = LanguageModel(cfg["model"], cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
-                          device_map="auto", torch_dtype=torch.bfloat16)
-    model.requires_grad_(False)
-    with model.trace("Hello"):   # загрузить веса на GPU до обращения к model.device
-        pass
+    fam = models.family(cfg["model"])
+    template, refusal_toks = fam["template"], fam["refusal_toks"]
+    model = models.load(cfg["model"])
 
     def prompts(domain, harmtype):
         rows = read_json(os.path.join(splits_dir(cfg, domain), f"{harmtype}_test.json"))
@@ -63,11 +47,8 @@ def main():
 
     names, V = load_vectors(cfg)
     w = torch.load(results_dir(cfg, "component", "component.pt"), map_location="cpu", weights_only=True)["w"]
-    g = torch.Generator().manual_seed(0)
     dirs = [("w", w.float())] + [(n, v.float()) for n, v in zip(names, V)]
-    for i in range(ac["n_rand"]):
-        r = torch.randn(w.shape[0], generator=g)
-        dirs.append((f"rand_{i}", r / r.norm()))
+    dirs += [(f"rand_{i}", r) for i, r in enumerate(random_directions(w.shape[0], ac["n_rand"], seed=0))]
 
     bs = ac["batch_size"]
 
@@ -77,21 +58,12 @@ def main():
         for i in range(0, len(ps), bs):
             with model.trace(ps[i:i + bs]):
                 if v is not None:
-                    for layer in model.model.layers:
-                        layer.input -= a * projection_einops(layer.input, v)
-                        at = layer.self_attn.output[0][:]
-                        layer.self_attn.output[0][:] -= a * projection_einops(at, v)
-                        mp = layer.mlp.output[:]
-                        layer.mlp.output[:] -= a * projection_einops(mp, v)
+                    models.ablate(model, v, a)
                 logits = model.lm_head.output[:, -1]
                 s = (refusal_metric(logits, refusal_toks) if want == "metric" else logits).save()
             out.append(s.value.detach().float().cpu())
             torch.cuda.empty_cache()
         return torch.cat(out)
-
-    def kl(base, abl):
-        return float(torch.nn.functional.kl_div(torch.log_softmax(base.double(), -1),
-                                                torch.softmax(abl.double(), -1), reduction="batchmean"))
 
     base_asr = {d: float((run(harmful[d], None, 0, "metric") < 0).float().mean()) for d in domains}
     base_logits = run(harmless, None, 0, "logits")

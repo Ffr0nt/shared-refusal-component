@@ -18,7 +18,7 @@ import sys
 
 import torch
 
-from common import FORK, dim_dir, load_config, read_json, results_dir, splits_dir, update_manifest, write_json
+from shared_refusal.common import FORK, dim_dir, load_config, read_json, results_dir, splits_dir, update_manifest, write_json
 
 
 def main():

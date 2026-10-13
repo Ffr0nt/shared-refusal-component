@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "shared-refusal-component"
 version = "0.1.0"
@@ -15,7 +19,15 @@ dependencies = [
 [tool.uv.sources]
 geometry-of-refusal = { path = "../geometry-of-refusal", editable = true }
 
+# Переиспользуемые модули — пакет shared_refusal в src/ (ставится editable при uv sync);
+# scripts/ — шаги пайплайна поверх него.
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.uv]
-package = false
 # Linux — сервер (GPU), macOS arm64 — локальные CPU-проверки.
 environments = ["sys_platform == 'linux'", "sys_platform == 'darwin' and platform_machine == 'arm64'"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

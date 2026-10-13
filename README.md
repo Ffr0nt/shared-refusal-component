@@ -40,6 +40,23 @@ bash run.sh 04
 CUDA_VISIBLE_DEVICES=0 bash run.sh 05
 ```
 
+## Layout
+
+- `src/shared_refusal/` — reusable modules, independent of the model and the dataset:
+  `common` (config, paths, manifest, reports, vector loading), `geometry` (spectrum, shared
+  component, null level, KL), `data` (harmful source from the `dataset:` config section,
+  harmless, splits), `models` (per-family chat template, refusal tokens, ablation hook).
+- `scripts/` — pipeline steps 00–05 on top of these modules.
+- `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)).
+- `tests/` — CPU tests for `src/` with heavy parts (HF datasets, nnsight model) mocked:
+
+```bash
+uv run --with pytest pytest -q
+```
+
+A new model family is one entry in `models.FAMILIES`; a new dataset is a new `dataset:`
+section in the config.
+
 Every step records what it produced (extraction point, seeds, split hashes, headline numbers)
 in `results/<model>/manifest.json`; markdown tables go to `results/<model>/reports/`.
 Configuration: [`configs/qwen2.5-3b.yaml`](configs/qwen2.5-3b.yaml).

@@ -15,7 +15,7 @@ import os
 import subprocess
 import sys
 
-from common import FORK, dim_dir, load_config, rdo_dir, results_dir, splits_dir, update_manifest
+from shared_refusal.common import FORK, dim_dir, load_config, rdo_dir, results_dir, splits_dir, update_manifest
 
 
 def main():

@@ -1,6 +1,15 @@
 model: Qwen/Qwen2.5-3B-Instruct
 
-# SALAD-Bench base_set, фильтр по 1-category
+# Источник harmful: HF-датасет и его колонки (см. src/shared_refusal/data.py)
+dataset:
+  name: salad                       # метка source в файлах сплитов
+  hf_path: OpenSafetyLab/Salad-Data
+  hf_config: base_set
+  text_col: question
+  domain_col: 1-category
+  stratum_col: 3-category           # лист таксономии; null — без стратификации
+
+# Домены: код -> значение domain_col
 domains:
   O1: "O1: Representation & Toxicity"
   O2: "O2: Misinformation Harms"

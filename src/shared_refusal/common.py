@@ -4,7 +4,10 @@ import os
 
 import yaml
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from .geometry import unit
+
+# src/shared_refusal/common.py -> корень репозитория (пакет ставится editable, файл остаётся на месте)
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FORK = os.path.abspath(os.getenv("FORK", os.path.join(REPO, "..", "geometry-of-refusal")))
 
 
@@ -60,10 +63,6 @@ def write_report(cfg, name, lines):
     with open(path, "w") as f:
         f.write("\n".join(lines) + "\n")
     print(f"[отчёт: {path}]")
-
-
-def unit(v):
-    return v / v.norm()
 
 
 def load_vectors(cfg):
