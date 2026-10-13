@@ -14,18 +14,20 @@ def test_repo_points_to_repository_root():
     assert os.path.isdir(os.path.join(artifacts.REPO, "src", "shared_refusal"))
 
 
-def test_load_config_adds_model_alias_and_hash(tmp_path):
-    p = tmp_path / "c.yaml"
+def test_load_config_adds_alias_run_name_and_hash(tmp_path):
+    p = tmp_path / "some-run_v2.yaml"
     p.write_text("model: Org/Some-Model-7B\ndomains: {A: a}\n")
-    assert load_config(str(p))["model_alias"] == "Some-Model-7B"
+    cfg = load_config(str(p))
+    assert cfg["model_alias"] == "Some-Model-7B" and cfg["run_name"] == "some-run_v2"
+    assert cfg["config_path"].endswith("some-run_v2.yaml")
     h = file_sha256(str(p))
     p.write_text("model: Org/Some-Model-7B\ndomains: {A: b}\n")
     assert file_sha256(str(p)) != h
 
 
-def test_run_layout_under_results_of_model(repo, cfg):
+def test_run_layout_under_results_of_run_name(repo, cfg):
     run = Run.from_config(cfg)
-    base = os.path.join(str(repo), "results", "Qwen2.5-3B-Instruct")
+    base = os.path.join(str(repo), "results", "qwen-test")
     assert run.root == base
     assert run.splits("A") == os.path.join(base, "splits", "A")
     assert run.dim("A") == os.path.join(base, "dim", "A")

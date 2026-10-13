@@ -26,7 +26,7 @@ Four stages that exchange one artifact — a **direction set** (named unit vecto
 metadata: method, domain, seed, layer). Any stage can be rerun on its own; stages 2 and 4
 are CPU-only and cheap, so variants are computed without touching the GPU.
 
-| stage | resource | what it does | output in `results/<model>/` |
+| stage | resource | what it does | output in `results/<run>/` |
 |---|---|---|---|
 | `00_data` | CPU | disjoint train/val/test (900/128/128) per domain, stratified by leaf category; shared harmless set | `splits/<domain>/` |
 | `01_directions` | GPU | DIM per domain at one extraction point (selected once on the pooled val set); one-dimensional RDO cones, 5 seeds per domain; assembled into one set | `dim/`, `rdo/`, `directions/{directions,init}.pt` |
@@ -34,14 +34,30 @@ are CPU-only and cheap, so variants are computed without touching the GPU.
 | `03_ablation` | GPU | ASR (first-token proxy) and harmless KL under partial ablation of components, DIM, RDO and random directions | `ablation/` |
 | `04_analysis` | CPU | per variant: share of the component in each DIM, cosines, shared-init control | `analysis/<variant>/` |
 
+## Runs
+
+A **run** is one name for three things: `configs/<run>.yaml` (every parameter that affects the
+numbers, including the HF revisions of the model and the dataset), `launch/<run>.sh` (that
+config pinned by its sha256) and `results/<run>/`.
+
 ```bash
-CONFIG=configs/qwen2.5-3b.yaml
-bash run.sh 00
-CUDA_VISIBLE_DEVICES=0 bash run.sh 01            # or: … run.sh 01 --domains O1 O2 (RDO only for these)
-bash run.sh 02                                   # or: bash run.sh 02 --variants all
-CUDA_VISIBLE_DEVICES=0 bash run.sh 03
-bash run.sh 04
+GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                     # all stages 00–04
+STEPS="02 04" bash launch/qwen2.5-3b_salad-o1o2o5o6.sh             # CPU stages only
+STEPS=01 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh --assemble-only   # args go to a single stage
+GPU=0 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh     # same in tmux, log in results/<run>/logs/
 ```
+
+Only `GPU`, `STEPS`, `FORK`, `HF_HOME` come from the environment — none of them affects the
+numbers. The config is fixed in three ways:
+
+- `scripts/pipeline.sh` refuses to start if the config no longer matches the hash in `launch/`;
+- every stage records in `manifest.json` the hash of the config sections it depends on, both
+  repositories' commits and whether their trees were dirty (`provenance`);
+- before starting, a stage checks the recorded hashes of the stages upstream: results of
+  different configs never mix in one folder. A new component variant is fine on top of
+  finished directions; a changed `rdo` section is not until stage 01 is recomputed.
+
+New run: copy the config under a new name, edit it, write `launch/<new>.sh` with its hash.
 
 `01` skips what is done (DIM if all directions exist, RDO per seed file), so on finished
 results it only reassembles the set.
@@ -53,8 +69,11 @@ results it only reassembles the set.
   component, null level, KL), `data` (stage 0), `models` (per-family chat template, refusal
   tokens, ablation hook — the only source of model-specific knowledge), `directions/`
   (stage 1: `dim`, `rdo` — the only place that calls the fork), `component` (stage 2),
-  `ablation` (stage 3), `analysis` (stage 4), `report`.
-- `scripts/` — stages 00–04, thin scripts on top of these modules; `--config` is required.
+  `ablation` (stage 3), `analysis` (stage 4), `report`, `provenance` (config hashes per stage,
+  commits, HF revision check).
+- `scripts/` — general logic: stages 00–04 (thin scripts on top of these modules, `--config` is
+  required), `pipeline.sh` (stages in order for one config), `tmux.sh` (a launch file in tmux).
+- `configs/`, `launch/` — concrete runs, one pair per run.
 - `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)).
 - `tests/` — CPU tests for `src/` and the CPU stages, heavy parts (HF datasets, nnsight model,
   the fork) mocked:
@@ -69,5 +88,4 @@ a new dataset is a new `dataset:` section in the config; a new component variant
 entry in `component.variants`.
 
 Every step records what it produced (extraction point, seeds, split hashes, headline numbers)
-in `results/<model>/manifest.json`; markdown tables go to `results/<model>/reports/`.
-Configuration: [`configs/qwen2.5-3b.yaml`](configs/qwen2.5-3b.yaml).
+in `results/<run>/manifest.json`; markdown tables go to `results/<run>/reports/`.

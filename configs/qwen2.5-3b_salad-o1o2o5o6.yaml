@@ -1,10 +1,12 @@
 model: Qwen/Qwen2.5-3B-Instruct
+model_revision: aa8e72537993ba99e69dfaafa59ed015b17504d1    # коммит на HF; этап 1 сверяет его с кэшем
 
 # Источник harmful: HF-датасет и его колонки (см. src/shared_refusal/data.py)
 dataset:
   name: salad                       # метка source в файлах сплитов
   hf_path: OpenSafetyLab/Salad-Data
   hf_config: base_set
+  hf_revision: d21a325e276a99bd69b1fbb8aa51a9f249486b72
   text_col: question
   domain_col: 1-category
   stratum_col: 3-category           # лист таксономии; null — без стратификации

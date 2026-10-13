@@ -12,15 +12,18 @@
 3. Единый набор directions/directions.pt (+ стартовые векторы RDO в directions/init.pt).
 
 Готовое не пересчитывается: DIM — если есть direction.pt всех доменов и точка в manifest,
-RDO — по файлам сидов. Поэтому прерванный прогон можно просто перезапустить; на готовых
-результатах этап только пересобирает набор (без GPU).
+RDO — по файлам сидов. Поэтому прерванный прогон можно просто перезапустить. --assemble-only
+только собирает набор из готовых файлов и не трогает модель (CPU).
+
+Модель форк грузит по имени, без ревизии, поэтому перед вычислениями проверяется, что в
+HF-кэше main указывает на model_revision из конфига.
 """
 import argparse
 import os
 
 import torch
 
-from shared_refusal import models
+from shared_refusal import models, provenance
 from shared_refusal.artifacts import Run, read_json, write_json
 from shared_refusal.config import load_config
 from shared_refusal.directions import assemble, dim, rdo
@@ -80,6 +83,8 @@ def compute_dim(cfg, run, fam):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
+    ap.add_argument("--assemble-only", action="store_true",
+                    help="только собрать набор из готовых DIM и RDO (без модели); нет файлов — ошибка")
     ap.add_argument("--domains", nargs="+", default=None,
                     help="обучить RDO только для этих доменов (на результат не влияет — для разбиения работы)")
     args = ap.parse_args()
@@ -88,8 +93,17 @@ def main():
     fam = models.family(cfg["model"])
     domains = list(cfg["domains"])
     rc = cfg["rdo"]
+    provenance.check_upstream(run, cfg, "directions")
 
-    if dim_done(run, domains):
+    todo_rdo = {d: rdo.pending(run.rdo(d), rc["seeds"][d]) for d in args.domains or domains}
+    need_dim = not dim_done(run, domains)
+    if args.assemble_only:
+        assert not need_dim and not any(todo_rdo.values()), \
+            f"--assemble-only: нет DIM ({need_dim}) или сидов RDO {todo_rdo}"
+    elif need_dim or any(todo_rdo.values()):
+        provenance.check_revision(cfg["model"], cfg["model_revision"])
+
+    if not need_dim:
         print("DIM: готово, пропуск")
     else:
         compute_dim(cfg, run, fam)
@@ -117,6 +131,7 @@ def main():
     ds.save(run.path("directions", "directions.pt"))
     init.save(run.path("directions", "init.pt"))
     run.update_manifest("directions", {"n": len(ds), "names": ds.names, "point": point})
+    provenance.record(run, cfg, "directions")
     print(f"набор: {len(ds)} направлений -> {run.path('directions')}")
 
 

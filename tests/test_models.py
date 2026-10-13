@@ -90,8 +90,8 @@ def test_load_builds_bf16_model_freezes_and_warms_up(monkeypatch):
     monkeypatch.setitem(sys.modules, "nnsight", types.SimpleNamespace(LanguageModel=FakeLM))
     monkeypatch.setenv("HUGGINGFACE_CACHE_DIR", "/cache/hub")
 
-    m = models.load("Org/Qwen2.5-3B-Instruct")
-    assert created == {"name": "Org/Qwen2.5-3B-Instruct", "cache_dir": "/cache/hub",
+    m = models.load("Org/Qwen2.5-3B-Instruct", "rev1")
+    assert created == {"name": "Org/Qwen2.5-3B-Instruct", "revision": "rev1", "cache_dir": "/cache/hub",
                        "device_map": "auto", "torch_dtype": torch.bfloat16}
     assert m.grad is False
     assert m.traced == ["Hello"]

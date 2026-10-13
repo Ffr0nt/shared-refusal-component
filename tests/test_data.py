@@ -7,7 +7,7 @@ import pytest
 
 from shared_refusal import data
 
-DC = {"name": "salad", "hf_path": "Org/Fake", "hf_config": "base_set",
+DC = {"name": "salad", "hf_path": "Org/Fake", "hf_config": "base_set", "hf_revision": "abc123",
       "text_col": "question", "domain_col": "1-category", "stratum_col": "3-category"}
 
 
@@ -25,8 +25,8 @@ def fake_datasets(monkeypatch):
         def to_pandas(self):
             return table.copy()
 
-    def load_dataset(path, name=None, split=None):
-        calls.append({"path": path, "name": name, "split": split})
+    def load_dataset(path, name=None, split=None, revision=None):
+        calls.append({"path": path, "name": name, "split": split, "revision": revision})
         return Split()
 
     monkeypatch.setitem(sys.modules, "datasets", types.SimpleNamespace(load_dataset=load_dataset))
@@ -35,7 +35,7 @@ def fake_datasets(monkeypatch):
 
 def test_load_harmful_filters_domains_drops_duplicates_and_renames(fake_datasets):
     df = data.load_harmful(DC, ["Domain A", "Domain B"])
-    assert fake_datasets == [{"path": "Org/Fake", "name": "base_set", "split": "train"}]
+    assert fake_datasets == [{"path": "Org/Fake", "name": "base_set", "split": "train", "revision": "abc123"}]
     assert list(df.columns) == ["text", "domain", "stratum"]
     assert list(df["text"]) == ["q1", "q2", "q3", "q4"]          # 'dup' выброшен целиком, C отфильтрован
     assert list(df["domain"]) == ["Domain A", "Domain A", "Domain B", "Domain B"]

@@ -12,7 +12,7 @@
 import argparse
 import os
 
-from shared_refusal import analysis, component, report
+from shared_refusal import analysis, component, provenance, report
 from shared_refusal.artifacts import DirectionSet, Run, write_json
 from shared_refusal.config import load_config
 
@@ -24,6 +24,7 @@ def main():
     args = ap.parse_args()
     cfg = load_config(args.config)
     run = Run.from_config(cfg)
+    provenance.check_upstream(run, cfg, "analysis")
 
     ds = DirectionSet.load(run.path("directions", "directions.pt"))
     init = DirectionSet.load(run.path("directions", "init.pt"))
@@ -42,6 +43,7 @@ def main():
         for d, e in energy.items():
             print(f"{variant} {d}: доля DIM вдоль w = {e:.3f}")
     run.update_manifest("analysis", done)
+    provenance.record(run, cfg, "analysis")
 
 
 if __name__ == "__main__":

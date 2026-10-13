@@ -24,7 +24,7 @@ def run(repo, cfg):
 
 @pytest.fixture
 def cfg():
-    return {"model": "Org/Qwen2.5-3B-Instruct", "model_alias": "Qwen2.5-3B-Instruct",
+    return {"model": "Org/Qwen2.5-3B-Instruct", "model_alias": "Qwen2.5-3B-Instruct", "run_name": "qwen-test",
             "domains": {"A": "Domain A", "B": "Domain B"},
             "rdo": {"seeds": {"A": [1, 2], "B": [3]}}}
 

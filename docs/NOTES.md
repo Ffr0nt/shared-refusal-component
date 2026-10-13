@@ -44,11 +44,11 @@
 
 3. **Все векторы сохраняются по отдельности**, чтобы их можно было разделить и сравнить
    между собой:
-   - `results/<model>/dim/<домен>/direction.pt` — DIM домена; там же `mean_diffs.pt`
+   - `results/<запуск>/dim/<домен>/direction.pt` — DIM домена; там же `mean_diffs.pt`
      по всем точкам;
-   - `results/<model>/rdo/<домен>/seed_XX.pt` — обученный `vector`, стартовый
+   - `results/<запуск>/rdo/<домен>/seed_XX.pt` — обученный `vector`, стартовый
      `init_vector`, кривые loss и bypass;
-   - `results/<model>/directions/directions.pt` — все векторы одним набором с метаданными
+   - `results/<запуск>/directions/directions.pt` — все векторы одним набором с метаданными
      (метод, домен, сид, слой); `init.pt` — стартовые векторы RDO.
 
 4. **Пересечение → общая компонента (этап 2, `02_component`).** Берём все 24 вектора (4 DIM + 20 RDO),

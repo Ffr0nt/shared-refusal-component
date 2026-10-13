@@ -9,7 +9,7 @@ reports/component-<вариант>.md.
 """
 import argparse
 
-from shared_refusal import component, report
+from shared_refusal import component, provenance, report
 from shared_refusal.artifacts import DirectionSet, Run
 from shared_refusal.config import load_config
 
@@ -22,6 +22,7 @@ def main():
     cfg = load_config(args.config)
     run = Run.from_config(cfg)
     cc = cfg["component"]
+    provenance.check_upstream(run, cfg, "component")
 
     ds = DirectionSet.load(run.path("directions", "directions.pt"))
     done = run.manifest().get("component", {})
@@ -36,6 +37,7 @@ def main():
         print(f"{variant}: N={len(res['names'])}  lam1={res['lam'][0]:.3f}  lam2={res['lam'][1]:.3f}  "
               f"нуль p95={res['null']['p95']:.3f}")
     run.update_manifest("component", done)
+    provenance.record(run, cfg, "component")
 
 
 if __name__ == "__main__":

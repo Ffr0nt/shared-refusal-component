@@ -44,13 +44,13 @@ def refusal_score(logits, refusal_toks, eps=1e-8):
     return torch.log(p + eps) - torch.log(1 - p + eps)
 
 
-def load(model_name):
-    """nnsight-модель в bf16, веса уже на GPU."""
+def load(model_name, revision):
+    """nnsight-модель в bf16 на зафиксированной ревизии HF, веса уже на GPU."""
     import os
 
     from nnsight import LanguageModel
 
-    model = LanguageModel(model_name, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
+    model = LanguageModel(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
                           device_map="auto", torch_dtype=torch.bfloat16)
     model.requires_grad_(False)
     with model.trace("Hello"):   # загрузить веса на GPU до обращения к model.device

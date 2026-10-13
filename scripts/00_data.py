@@ -13,6 +13,7 @@ base_set, домен — 1-category) — непересекающиеся harmfu
 import argparse
 import os
 
+from shared_refusal import provenance
 from shared_refusal.artifacts import Run, write_json
 from shared_refusal.config import file_sha256, load_config
 from shared_refusal.data import SPLITS, cut, load_harmful, load_harmless, stratified_sample
@@ -24,6 +25,7 @@ def main():
     args = ap.parse_args()
     cfg = load_config(args.config)
     run = Run.from_config(cfg)
+    provenance.check_upstream(run, cfg, "data")
     sc, dc = cfg["splits"], cfg["dataset"]
     sizes = {s: sc[f"n_{s}"] for s in SPLITS}
     total = sum(sizes.values())
@@ -55,6 +57,7 @@ def main():
         print(f"{d}: пул {len(pool)} -> {sizes}, страт {sample['stratum'].nunique()}")
 
     run.update_manifest("splits", manifest)
+    provenance.record(run, cfg, "data")
 
 
 if __name__ == "__main__":

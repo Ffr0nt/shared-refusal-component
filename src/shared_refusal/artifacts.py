@@ -1,13 +1,13 @@
 """Артефакты запуска: раскладка папки results/, manifest, json и набор направлений.
 
-Раскладка results/<запуск>/:
+Раскладка results/<запуск>/ (имя запуска — имя файла конфига):
     splits/<домен>/{harmful,harmless}_{train,val,test}.json   этап 0
     dim/<домен>/direction.pt, rdo/<домен>/seed_XX.pt         этап 1, сырые (их читает rdo.py)
     directions/directions.pt, directions/init.pt             этап 1, единый набор
     component/<вариант>/                                     этап 2
     ablation/                                                этап 3
     analysis/<вариант>/                                      этап 4
-    reports/*.md, manifest.json
+    reports/*.md, logs/*.log, manifest.json (с provenance каждого этапа)
 """
 import json
 import os
@@ -41,7 +41,7 @@ class Run:
 
     @classmethod
     def from_config(cls, cfg):
-        return cls(os.path.join(REPO, "results", cfg["model_alias"]), cfg["model"])
+        return cls(os.path.join(REPO, "results", cfg["run_name"]), cfg["model"])
 
     def path(self, *parts):
         return os.path.join(self.root, *parts)

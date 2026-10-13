@@ -15,7 +15,7 @@ import os
 
 import torch
 
-from shared_refusal import ablation, component, models, report
+from shared_refusal import ablation, component, models, provenance, report
 from shared_refusal.artifacts import DirectionSet, Run, read_json, write_json
 from shared_refusal.config import load_config
 from shared_refusal.geometry import random_directions
@@ -45,6 +45,7 @@ def main():
     ac = cfg["ablation"]
     domains = list(cfg["domains"])
     fam = models.family(cfg["model"])
+    provenance.check_upstream(run, cfg, "ablation")
 
     def test_prompts(domain, harmtype):
         rows = read_json(os.path.join(run.splits(domain), f"{harmtype}_test.json"))
@@ -54,7 +55,7 @@ def main():
     harmless = test_prompts(domains[0], "harmless")
     ds = directions_to_test(cfg, run)
 
-    model = models.load(cfg["model"])
+    model = models.load(cfg["model"], cfg["model_revision"])
     forward = functools.partial(models.last_token_logits, model, batch_size=ac["batch_size"])
     res = ablation.evaluate(forward, fam["refusal_toks"], harmful, harmless, ds,
                             ac["alphas"], log=lambda s: print(s, flush=True))
@@ -64,6 +65,7 @@ def main():
     run.write_report("ablation.md", report.ablation(cfg["model_alias"], res["base_asr"],
                                                     ablation.summary_table(res, domains), domains))
     run.update_manifest("ablation", {"directions": ds.names, "alphas": ac["alphas"]})
+    provenance.record(run, cfg, "ablation")
 
 
 if __name__ == "__main__":

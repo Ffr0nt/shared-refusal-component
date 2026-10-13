@@ -8,6 +8,7 @@ Harmful — любой HF-датасет, где есть колонка тек�
       name: salad                       # метка source в файлах сплитов
       hf_path: OpenSafetyLab/Salad-Data
       hf_config: base_set
+      hf_revision: d21a325e…            # коммит датасета на HF — обязателен
       text_col: question
       domain_col: 1-category
       stratum_col: 3-category           # null — без стратификации
@@ -26,7 +27,8 @@ def load_harmful(dc, labels):
     или повторённый, неоднозначен — выбрасываются все его копии."""
     from datasets import load_dataset
 
-    df = load_dataset(dc["hf_path"], name=dc.get("hf_config"), split=dc.get("hf_split", "train")).to_pandas()
+    df = load_dataset(dc["hf_path"], name=dc.get("hf_config"), split=dc.get("hf_split", "train"),
+                      revision=dc["hf_revision"]).to_pandas()
     df = df[df[dc["domain_col"]].isin(labels)]
     df = df[~df[dc["text_col"]].duplicated(keep=False)]
     stratum = dc.get("stratum_col")
