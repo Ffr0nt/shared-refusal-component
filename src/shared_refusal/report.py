@@ -48,3 +48,25 @@ def ablation(alias, base_asr, summary_rows, domains):
                    [[r["direction"], f"{r['alpha']:.2f}", f"{r['kl']:.4f}"] +
                     [f"{r['asr'][d]:.3f}" for d in domains] + [f"**{r['asr_mean']:.3f}**"] for r in summary_rows])
     return lines
+
+
+def convergence(alias, res, targets):
+    fmt = lambda v: "∞" if v == float("inf") else f"{v:.1f}"
+    lines = [f"# Сходимость общей компоненты — {alias}", "",
+             f"Пул: {res['n_pool']} векторов ({res['n_dim']} DIM, {res['n_pool'] - res['n_dim']} RDO), без различия "
+             f"между ними; сид {res['seed']}.", "",
+             "ρ² — сходство компоненты из N векторов с компонентой бесконечного числа векторов, "
+             "оценка по непересекающимся половинам: |cos(w_A, w_B)|.", ""]
+    lines += table(["N", "ρ² (split-half)", "p05–p95", "пар", "cos²(w_N, w_всех)", "λ1(N)", "сдвиг от N+1-го"],
+                   [[n, f"**{h['rho2']['mean']:.3f}**" if h else "—",
+                     f"{h['rho2']['p05']:.3f}–{h['rho2']['p95']:.3f}" if h else "—", h["rho2"]["n"] if h else "—",
+                     f"{f['cos2_full']['mean']:.3f}", f"{f['lam1']['mean']:.3f}",
+                     f"{res['steps'][n]['mean']:.4f}" if n in res["steps"] else "—"]
+                    for n, f, h in ((n, res["vs_full"][n], res["split_half"].get(n)) for n in res["vs_full"])])
+    lines += ["", "cos²(w_N, w_всех) завышена при больших N: подмножество почти совпадает с полным набором.",
+              "", "Модель 1/ρ² − 1 = k/N (+ b):", ""]
+    lines += table(["модель", "k", "b"] + [f"N для ρ² ≥ {t}" for t in targets] + ["прирост ρ² от 11-го", "от 21-го"],
+                   [[name, f"{f['k']:.3f}", f"{f['b']:.4f}"] + [fmt(res["n_for_target"][name][str(t)]) for t in targets] +
+                    [f"{res['gain'][name]['10']:.4f}", f"{res['gain'][name]['20']:.4f}"]
+                    for name, f in res["fit"].items()])
+    return lines

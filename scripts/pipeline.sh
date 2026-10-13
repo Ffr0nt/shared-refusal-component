@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Этапы пайплайна подряд для одного конфига. Общая логика — конкретные запуски в launch/.
 #
-#   CONFIG=configs/<имя>.yaml GPU=0 bash scripts/pipeline.sh                  # все этапы 00–04
+#   CONFIG=configs/<имя>.yaml GPU=0 bash scripts/pipeline.sh                  # все этапы 00–05
 #   CONFIG=configs/<имя>.yaml STEPS="02 04" bash scripts/pipeline.sh          # только CPU-этапы
 #   CONFIG=configs/<имя>.yaml STEPS=01 bash scripts/pipeline.sh --assemble-only   # аргументы — одному этапу
 #
 # Env:
 #   CONFIG         обязателен;
 #   CONFIG_SHA256  если задан — конфиг должен иметь ровно этот хэш (так launch/ фиксирует запуск);
-#   STEPS          этапы по порядку (по умолчанию "00 01 02 03 04");
+#   STEPS          этапы по порядку (по умолчанию "00 01 02 03 04 05");
 #   GPU            индекс карты, обязателен, если среди STEPS есть GPU-этап (01, 03);
 #   FORK, HF_HOME  пути к форку и HF-кэшу.
 # Ни одна из переменных, кроме CONFIG, на числа не влияет.
@@ -28,7 +28,7 @@ if [[ -n "${CONFIG_SHA256:-}" ]]; then
   fi
 fi
 
-STEPS="${STEPS:-00 01 02 03 04}"
+STEPS="${STEPS:-00 01 02 03 04 05}"
 read -ra STEP_LIST <<< "$STEPS"
 if (( $# > 0 && ${#STEP_LIST[@]} != 1 )); then
   echo "аргументы ($*) можно передать только одному этапу: STEPS=<этап>" >&2; exit 1

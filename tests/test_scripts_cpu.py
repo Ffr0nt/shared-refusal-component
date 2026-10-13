@@ -28,7 +28,9 @@ def stage1(repo, tmp_path):
            "rdo": {"seeds": {"A": [1, 2], "B": [3, 4]}},
            "component": {"n_null": 20, "null_seed": 0,
                          "variants": {"all": {}, "dim_only": {"methods": ["dim"]},
-                                      "no_s04": {"exclude": ["rdo_B_s04"]}}}}
+                                      "no_s04": {"exclude": ["rdo_B_s04"]}}},
+           "convergence": {"selection": {}, "n_max": 5, "n_samples": 30, "n_orders": 20, "seed": 21,
+                           "targets": [0.9, 0.95]}}
     path = tmp_path / "tiny.yaml"
     path.write_text(yaml.safe_dump(cfg))
     g = torch.Generator().manual_seed(0)
@@ -88,3 +90,16 @@ def test_provenance_recorded_and_blocks_mixed_config(stage1, monkeypatch):
     artifacts.write_json(m, run.path("manifest.json"))
     with pytest.raises(RuntimeError, match="этап directions"):
         run_main("04_analysis", ["--config", cfg_path], monkeypatch)
+
+
+def test_convergence_stage(stage1, monkeypatch):
+    cfg_path, run, _ = stage1
+    run_main("05_convergence", ["--config", cfg_path], monkeypatch)
+    res = artifacts.read_json(run.path("convergence", "convergence.json"))
+    assert res["n_pool"] == 6 and res["n_dim"] == 2
+    assert set(res["split_half"]) == {"1", "2", "3"} and set(res["vs_full"]) == {"1", "2", "3", "4", "5"}
+    assert res["split_half"]["1"]["rho2"]["n"] == 15             # все пары при N = 1
+    assert set(res["steps"]) == {"1", "2", "3", "4", "5"}
+    assert res["fit"]["no_plateau"]["k"] > 0
+    assert "convergence" in run.manifest()["provenance"]
+    assert os.path.exists(run.path("reports", "convergence.md"))

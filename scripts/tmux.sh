@@ -18,7 +18,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "сессия $SESSION уже есть — tmux attach -t $SESSION" >&2
   exit 1
 fi
-ENV=$(printf '%q ' "GPU=${GPU:-}" "STEPS=${STEPS:-00 01 02 03 04}")
+ENV=$(printf '%q ' "GPU=${GPU:-}" "STEPS=${STEPS:-00 01 02 03 04 05}")
 tmux new-session -d -s "$SESSION" -c "$PWD" \
   "env $ENV bash $(printf '%q ' "$LAUNCH" "$@") 2>&1 | tee $LOG"
 echo "сессия: $SESSION  лог: $LOG"

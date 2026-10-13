@@ -9,10 +9,11 @@
   component  — этап 2: отбор из набора и общая компонента;
   ablation   — этап 3: ASR/KL при аблации любого набора направлений;
   analysis   — этап 4: свойства компоненты (доля энергии, контроль старта, …);
+  convergence — этап 5: сходимость компоненты по числу векторов (split-half, модель k/N);
   report     — markdown-отчёты;
   provenance — хэши секций конфига по этапам, коммиты, проверка ревизий HF.
 
 Слои: geometry/data/config ← artifacts/report ← component/analysis (CPU) ; models ← ablation,
-directions (GPU). Шаги scripts/00–04 — тонкие сценарии поверх этих модулей; scripts/pipeline.sh гоняет их для
+directions (GPU). Шаги scripts/00–05 — тонкие сценарии поверх этих модулей; scripts/pipeline.sh гоняет их для
 одного конфига, launch/<запуск>.sh фиксирует конкретный конфиг хэшем.
 """

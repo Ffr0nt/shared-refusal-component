@@ -22,7 +22,7 @@ Both repositories must be siblings: RDO training and the DIM pipeline come from
 
 ## Pipeline
 
-Four stages that exchange one artifact — a **direction set** (named unit vectors with
+Stages that exchange one artifact — a **direction set** (named unit vectors with
 metadata: method, domain, seed, layer). Any stage can be rerun on its own; stages 2 and 4
 are CPU-only and cheap, so variants are computed without touching the GPU.
 
@@ -33,6 +33,7 @@ are CPU-only and cheap, so variants are computed without touching the GPU.
 | `02_component` | CPU | per variant (selection of the set): top eigenvector of `(1/N) Σ v vᵀ`, null band | `component/<variant>/` |
 | `03_ablation` | GPU | ASR (first-token proxy) and harmless KL under partial ablation of components, DIM, RDO and random directions | `ablation/` |
 | `04_analysis` | CPU | per variant: share of the component in each DIM, cosines, shared-init control | `analysis/<variant>/` |
+| `05_convergence` | CPU | how fast the component of N random vectors (DIM and RDO alike) converges: split-half agreement, fit `1/ρ² − 1 = k/N (+ b)`, vectors needed for a target purity | `convergence/` |
 
 ## Runs
 
@@ -41,8 +42,8 @@ numbers, including the HF revisions of the model and the dataset), `launch/<run>
 config pinned by its sha256) and `results/<run>/`.
 
 ```bash
-GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                     # all stages 00–04
-STEPS="02 04" bash launch/qwen2.5-3b_salad-o1o2o5o6.sh             # CPU stages only
+GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                     # all stages 00–05
+STEPS="02 04 05" bash launch/qwen2.5-3b_salad-o1o2o5o6.sh          # CPU stages only
 STEPS=01 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh --assemble-only   # args go to a single stage
 GPU=0 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh     # same in tmux, log in results/<run>/logs/
 ```
@@ -69,9 +70,9 @@ results it only reassembles the set.
   component, null level, KL), `data` (stage 0), `models` (per-family chat template, refusal
   tokens, ablation hook — the only source of model-specific knowledge), `directions/`
   (stage 1: `dim`, `rdo` — the only place that calls the fork), `component` (stage 2),
-  `ablation` (stage 3), `analysis` (stage 4), `report`, `provenance` (config hashes per stage,
+  `ablation` (stage 3), `analysis` (stage 4), `convergence` (stage 5), `report`, `provenance` (config hashes per stage,
   commits, HF revision check).
-- `scripts/` — general logic: stages 00–04 (thin scripts on top of these modules, `--config` is
+- `scripts/` — general logic: stages 00–05 (thin scripts on top of these modules, `--config` is
   required), `pipeline.sh` (stages in order for one config), `tmux.sh` (a launch file in tmux).
 - `configs/`, `launch/` — concrete runs, one pair per run.
 - `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)).
