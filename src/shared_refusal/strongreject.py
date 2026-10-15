@@ -133,13 +133,28 @@ def parse_rubric(text):
     return out
 
 
+def env_key(name, env_file):
+    """Значение из окружения, иначе из файла вида KEY=value (.env в корне репозитория)."""
+    if os.getenv(name):
+        return os.getenv(name)
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                k, sep, v = line.strip().partition("=")
+                if sep and k.strip() == name and v.strip():
+                    return v.strip().strip("'\"")
+    return None
+
+
 def openrouter_client():
-    """OpenAI-совместимый клиент OpenRouter; ключ — только из окружения."""
+    """OpenAI-совместимый клиент OpenRouter; ключ — из окружения или из .env (в git не попадает)."""
     from openai import OpenAI
 
-    key = os.getenv("OPENROUTER_API_KEY")
+    from .artifacts import REPO
+
+    key = env_key("OPENROUTER_API_KEY", os.path.join(REPO, ".env"))
     if not key:
-        raise RuntimeError("нет OPENROUTER_API_KEY в окружении")
+        raise RuntimeError("нет OPENROUTER_API_KEY ни в окружении, ни в .env в корне репозитория")
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
 
 

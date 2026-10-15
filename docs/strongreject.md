@@ -101,7 +101,7 @@ STEPS=06 GPU=1 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh
 ```bash
 R=qwen2.5-3b_salad-o1o2o5o6
 ssh peaceful-matsumoto "cd ~/f.zakharov/shared-refusal-component/results && tar czf - $R" | tar xzf - -C results/
-OPENROUTER_API_KEY=… STEPS=07 bash launch/$R.sh
+STEPS=07 bash launch/$R.sh          # ключ — в .env (шаблон .env.example) или в окружении
 tar czf - -C results/$R strongreject reports manifest.json | \
   ssh peaceful-matsumoto "tar xzf - -C ~/f.zakharov/shared-refusal-component/results/$R"
 ```

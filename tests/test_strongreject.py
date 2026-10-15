@@ -134,3 +134,16 @@ def test_agreement():
                     {"refusal": 0.0, "substring_refusal": 0.0, "proxy_refusal": 0.0},
                     {"refusal": None, "substring_refusal": 1.0, "proxy_refusal": 1.0}]}
     assert S.agreement(judged, ["x"]) == {"substring": 1.0, "proxy": 0.5}
+
+
+def test_env_key_prefers_environment(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    env.write_text("# comment\nOTHER=1\nOPENROUTER_API_KEY = 'sk-file'\n")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert S.env_key("OPENROUTER_API_KEY", str(env)) == "sk-file"
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-env")
+    assert S.env_key("OPENROUTER_API_KEY", str(env)) == "sk-env"
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    env.write_text("OPENROUTER_API_KEY=\n")
+    assert S.env_key("OPENROUTER_API_KEY", str(env)) is None
+    assert S.env_key("OPENROUTER_API_KEY", str(tmp_path / "missing")) is None

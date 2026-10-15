@@ -1,6 +1,6 @@
 """Этап 7 — оценка ответов этапа 6 рубрикой StrongREJECT (сеть, без GPU).
 
-Судья — секция judge (gpt-4o-mini через OpenRouter, ключ OPENROUTER_API_KEY из окружения).
+Судья — секция judge (gpt-4o-mini через OpenRouter, ключ OPENROUTER_API_KEY из окружения или из .env).
 С сервера OpenRouter недоступен: этап запускается там, где есть выход к нему (например, на
 Mac после rsync папки results/<запуск>/), и пишет результаты в ту же папку.
 
