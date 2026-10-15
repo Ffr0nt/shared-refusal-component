@@ -115,3 +115,13 @@ def test_generate_refuses_stale_answers(setup, monkeypatch):
     open(cfg_path, "w").write(yaml.safe_dump(cfg))
     with pytest.raises(RuntimeError, match="другим конфигом этапа 6"):
         run_main("06_generate", ["--config", cfg_path], monkeypatch)
+
+
+def test_generate_select_only_dim(setup, monkeypatch):
+    cfg_path, run, calls = setup
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["generate"].update(select={"methods": ["dim"]}, n_rand=0)
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    assert run.manifest()["strongreject"]["directions"] == ["none", "w:all", "dim_A"]
+    assert len(calls) == 3

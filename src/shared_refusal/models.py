@@ -148,20 +148,36 @@ def ablation_hooks(model, v, a):
             h.remove()
 
 
+class _FirstStepLogits:
+    """LogitsProcessor: запоминает логиты первого шага декодирования (для прокси) и не меняет их.
+    output_scores хранил бы логиты всех шагов: 512 × batch × vocab во float32 — гигабайты."""
+
+    def __init__(self):
+        self.first = None
+
+    def __call__(self, input_ids, scores):
+        if self.first is None:
+            self.first = scores.float().cpu()
+        return scores
+
+
 @torch.no_grad()
 def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks):
     """Жадные ответы на готовые (с шаблоном) промпты при аблации v силы a.
     Возвращает [(текст ответа, refusal_score первого шага)] — прокси на тех же ответах."""
+    from transformers import LogitsProcessorList
+
     out = []
     for i in range(0, len(prompts), batch_size):
         enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True,
                   add_special_tokens=False).to(next(model.parameters()).device)
+        first = _FirstStepLogits()
         with ablation_hooks(model, v, a):
-            g = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, temperature=None,
-                               top_p=None, top_k=None, repetition_penalty=1.0, pad_token_id=tok.pad_token_id,
-                               output_scores=True, return_dict_in_generate=True)
-        texts = tok.batch_decode(g.sequences[:, enc["input_ids"].shape[1]:], skip_special_tokens=True)
-        scores = refusal_score(g.scores[0].float().cpu(), refusal_toks)
+            seqs = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, temperature=None,
+                                  top_p=None, top_k=None, repetition_penalty=1.0, pad_token_id=tok.pad_token_id,
+                                  logits_processor=LogitsProcessorList([first]))
+        texts = tok.batch_decode(seqs[:, enc["input_ids"].shape[1]:], skip_special_tokens=True)
+        scores = refusal_score(first.first, refusal_toks)
         out += [(t, float(s)) for t, s in zip(texts, scores)]
         torch.cuda.empty_cache()
     return out

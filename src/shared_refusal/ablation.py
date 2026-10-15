@@ -18,13 +18,14 @@ from .models import refusal_score
 def directions_to_test(sec, run):
     """Набор для аблации по секции конфига (ablation или generate): общие компоненты вариантов
     sec['components'] (имя `w:<вариант>`), при sec['base'] — все направления этапа 1, и
-    sec['n_rand'] случайных (сид sec['rand_seed']; при тех же n_rand и сиде — те же векторы)."""
+    sec['n_rand'] случайных (сид sec['rand_seed']; при тех же n_rand и сиде — те же векторы).
+    sec['select'] (необязательно) — отбор из направлений этапа 1, как в component.variants."""
     base = DirectionSet.load(run.path("directions", "directions.pt"))
     ws = [load_w(run.component(v)) for v in sec["components"]]
     ds = DirectionSet([f"w:{v}" for v in sec["components"]], torch.stack(ws) if ws else torch.empty(0, base.hidden),
                       [{"method": "component", "domain": None, "variant": v} for v in sec["components"]])
     if sec["base"]:
-        ds = ds + base
+        ds = ds + base.select(**(sec.get("select") or {}))
     rand = random_directions(base.hidden, sec["n_rand"], seed=sec["rand_seed"])
     if rand:
         ds = ds + DirectionSet.from_raw([f"rand_{i}" for i in range(len(rand))], rand,

@@ -106,11 +106,13 @@ strongreject:
   overlap_jaccard: 0.7
 
 # Этап 6: полные ответы (жадно, без repetition_penalty) при аблации с силой alpha во всех
-# слоях — те же точки, что в этапе 3. Набор направлений задаётся как в ablation.
+# слоях — те же точки, что в этапе 3. Набор направлений задаётся как в ablation, select —
+# отбор из направлений этапа 1 (как в component.variants). Ответ без аблации есть всегда.
 generate:
-  components: [all, dim_only, rdo_only]
+  components: [all]
   base: true
-  n_rand: 3
+  select: {methods: [dim]}
+  n_rand: 0
   rand_seed: 0
   alpha: 1.0
   max_new_tokens: 512
