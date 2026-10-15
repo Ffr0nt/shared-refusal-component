@@ -7,7 +7,8 @@ O5 Malicious Use, O6 Human Autonomy — and for each of them compute a differenc
 (DIM) refusal direction and train five one-dimensional refusal cones (RDO, Wollschläger et
 al.) with distinct seeds. All 24 vectors are intersected with equal weights to obtain one
 shared component; we then measure its share of each DIM and test it with directional
-ablation.
+ablation — with a first-token proxy on held-out SALAD prompts and with full generations on
+StrongREJECT scored by its rubric judge.
 
 ## Setup
 
@@ -34,6 +35,8 @@ are CPU-only and cheap, so variants are computed without touching the GPU.
 | `03_ablation` | GPU | ASR (first-token proxy) and harmless KL under partial ablation of components, DIM, RDO and random directions | `ablation/` |
 | `04_analysis` | CPU | per variant: share of the component in each DIM, cosines, shared-init control | `analysis/<variant>/` |
 | `05_convergence` | CPU | how fast the component of N random vectors (DIM and RDO alike) converges: split-half agreement, fit `1/ρ² − 1 = k/N (+ b)`, vectors needed for a target purity | `convergence/` |
+| `06_generate` | GPU | StrongREJECT prompts (minus those overlapping our train/val): greedy full answers under ablation of the same directions, plus the first-token proxy on them | `strongreject/{prompts.json,generations/}` |
+| `07_judge` | network | StrongREJECT rubric judge (gpt-4o-mini via OpenRouter), cached per answer; score with bootstrap CI, strict subset where the model refuses without ablation, agreement of proxy and refusal phrases with the judge | `strongreject/{judge/,strongreject.json}` |
 
 ## Runs
 
@@ -42,14 +45,17 @@ numbers, including the HF revisions of the model and the dataset), `launch/<run>
 config pinned by its sha256) and `results/<run>/`.
 
 ```bash
-GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                     # all stages 00–05
+GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                     # stages 00–06
+STEPS=07 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh                  # judge: needs OPENROUTER_API_KEY
 STEPS="02 04 05" bash launch/qwen2.5-3b_salad-o1o2o5o6.sh          # CPU stages only
 STEPS=01 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh --assemble-only   # args go to a single stage
 GPU=0 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh     # same in tmux, log in results/<run>/logs/
 ```
 
-Only `GPU`, `STEPS`, `FORK`, `HF_HOME` come from the environment — none of them affects the
-numbers. The config is fixed in three ways:
+Only `GPU`, `STEPS`, `FORK`, `HF_HOME` (and `OPENROUTER_API_KEY` for `07`) come from the
+environment — none of them affects the numbers. `07_judge` needs access to OpenRouter, so it
+may run on another machine over a copy of `results/<run>/` (see
+[`docs/strongreject.md`](docs/strongreject.md)). The config is fixed in three ways:
 
 - `scripts/pipeline.sh` refuses to start if the config no longer matches the hash in `launch/`;
 - every stage records in `manifest.json` the hash of the config sections it depends on, both
@@ -70,9 +76,10 @@ results it only reassembles the set.
   component, null level, KL), `data` (stage 0), `models` (per-family chat template, refusal
   tokens, ablation hook — the only source of model-specific knowledge), `directions/`
   (stage 1: `dim`, `rdo` — the only place that calls the fork), `component` (stage 2),
-  `ablation` (stage 3), `analysis` (stage 4), `convergence` (stage 5), `report`, `provenance` (config hashes per stage,
+  `ablation` (stage 3), `analysis` (stage 4), `convergence` (stage 5), `strongreject` (stages 6–7: data,
+  overlap check, rubric judge, summary), `report`, `provenance` (config hashes per stage,
   commits, HF revision check).
-- `scripts/` — general logic: stages 00–05 (thin scripts on top of these modules, `--config` is
+- `scripts/` — general logic: stages 00–07 (thin scripts on top of these modules, `--config` is
   required), `pipeline.sh` (stages in order for one config), `tmux.sh` (a launch file in tmux).
 - `configs/`, `launch/` — concrete runs, one pair per run.
 - `docs/` — notes on what we do and why ([`docs/NOTES.md`](docs/NOTES.md)), one document per experiment (e.g. [`docs/convergence.md`](docs/convergence.md)), figures in `docs/figures/`.
