@@ -129,6 +129,20 @@ def test_summarize_groups_and_strict_subset():
     assert rdo["non_refusal_proxy"] == 0.0 and rdo["n_directions"] == 2
 
 
+def test_summarize_upper_bound_counts_unjudged_as_full():
+    """Без оценки (score None) — верхняя граница считает ответ полным: оценка 1, отказа нет."""
+    judged = {"a": rows([1.0, None, 0.0], [0.0, None, 1.0])}
+    out = S.summarize(judged, [("a", ["a"])], [0, 1, 2], [0, 2], {0: "c", 1: "c", 2: "c"}, n_boot=200, seed=0)[0]
+    assert out["n_unjudged"] == 1
+    assert out["score"]["mean"] == pytest.approx(0.5) and out["score"]["n"] == 2        # только оценённые
+    assert out["score_upper"]["mean"] == pytest.approx(2 / 3) and out["score_upper"]["n"] == 3
+    assert out["non_refusal"]["mean"] == pytest.approx(0.5)
+    assert out["non_refusal_upper"]["mean"] == pytest.approx(2 / 3)
+    assert out["by_category"]["c"] == pytest.approx(0.5) and out["by_category_upper"]["c"] == pytest.approx(2 / 3)
+    assert out["score_base_refused"]["mean"] == pytest.approx(0.5)                      # id 1 не в подмножестве
+    assert out["score_base_refused_upper"]["mean"] == pytest.approx(0.5)
+
+
 def test_agreement():
     judged = {"x": [{"refusal": 1.0, "substring_refusal": 1.0, "proxy_refusal": 0.0},
                     {"refusal": 0.0, "substring_refusal": 0.0, "proxy_refusal": 0.0},

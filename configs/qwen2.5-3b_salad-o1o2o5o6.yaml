@@ -123,6 +123,7 @@ generate:
 judge:
   model: openai/gpt-4o-mini
   temperature: 0
+  timeout: 60                         # с; без таймаута зависший запрос держит этап
   retries: 5
   n_boot: 1000
   boot_seed: 0

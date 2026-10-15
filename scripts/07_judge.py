@@ -5,7 +5,8 @@
 Mac после rsync папки results/<запуск>/), и пишет результаты в ту же папку.
 
 Оценки кэшируются построчно в strongreject/judge/<направление>.jsonl: повторный запуск
-досылает только недостающее. Когда оценено всё, пишет strongreject/strongreject.json и
+досылает только то, чего в кэше нет (ответы, на которых судья отказался, повторно не
+отправляются — для этого есть --retry-unjudged). Когда оценено всё, пишет strongreject/strongreject.json и
 reports/strongreject.md. Без ключа, если всё уже оценено, — только пересчёт сводки.
 
 Сводка: средняя оценка StrongREJECT (0…1) с 95% ДИ — на всех оставленных запросах и только на
@@ -34,18 +35,22 @@ def judge_path(run, name):
     return run.path("strongreject", "judge", name.replace(":", "_") + ".jsonl")
 
 
-def judge_missing(run, names, prompts, cfg, workers, log=print):
-    """Досылает судье ответы без оценки; возвращает число отправленных."""
+def judge_missing(run, names, prompts, cfg, workers, retry_unjudged=False, log=print):
+    """Досылает судье ответы, которых ещё нет в кэше; возвращает число отправленных.
+    Ответ, на котором судья отказался (score None), второй раз не отправляется: он почти всегда
+    отказывается снова, а перезапуск ради сводки не должен стоить денег. retry_unjudged — всё же
+    отправить такие ещё раз (например, после смены модели судьи)."""
     jc = cfg["judge"]
     jobs = []
     for name in names:
         gens = read_jsonl(run.path("strongreject", "generations", name.replace(":", "_") + ".jsonl"))
-        have = {r["id"] for r in read_jsonl(judge_path(run, name)) if r.get("score") is not None}
+        have = {r["id"] for r in read_jsonl(judge_path(run, name))
+                if r.get("score") is not None or not retry_unjudged}
         jobs += [(name, g) for g in gens if g["id"] not in have]
     if not jobs:
         return 0
     templates = strongreject.load_templates(cfg["strongreject"], run.path("strongreject", "source"))
-    client = strongreject.openrouter_client()
+    client = strongreject.openrouter_client(jc["timeout"])
     locks = {n: threading.Lock() for n in names}
     log(f"судье: {len(jobs)} ответов, {workers} потоков")
 
@@ -100,17 +105,24 @@ def groups_of(names, meta_by_name, domains):
 
 
 def kl_at(run, alpha):
-    """KL на harmless_test из этапа 3 при той же силе аблации (если есть): {направление: KL}."""
+    """KL на harmless_test из этапа 3 при той же силе аблации (если есть): {направление: KL}.
+    В ablation.json прогона 12.10 единственная компонента названа `w` — для неё заводим и
+    нынешнее имя `w:all` (пересчёт этапа 3 новым кодом записал бы его сам)."""
     p = run.path("ablation", "ablation.json")
     if not os.path.exists(p):
         return {}
-    return {r["direction"]: r["kl"] for r in read_json(p)["rows"] if r["alpha"] == alpha}
+    kl = {r["direction"]: r["kl"] for r in read_json(p)["rows"] if r["alpha"] == alpha}
+    if "w" in kl:
+        kl.setdefault("w:all", kl["w"])
+    return kl
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--workers", type=int, default=16, help="параллельных запросов к судье (на числа не влияет)")
+    ap.add_argument("--retry-unjudged", action="store_true",
+                    help="отправить судье и те ответы, на которых он уже отказался")
     args = ap.parse_args()
     cfg = load_config(args.config)
     run = Run.from_config(cfg)
@@ -120,7 +132,7 @@ def main():
     m = run.manifest()["strongreject"]
     names = m["directions"]
     prompts = {r["id"]: r for r in read_json(run.path("strongreject", "prompts.json"))}
-    judge_missing(run, names, prompts, cfg, args.workers)
+    judge_missing(run, names, prompts, cfg, args.workers, args.retry_unjudged)
 
     judged = collect(run, names, prompts)
     missing = {n: sum(r["score"] is None for r in rows) for n, rows in judged.items()}

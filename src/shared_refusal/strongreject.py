@@ -146,8 +146,11 @@ def env_key(name, env_file):
     return None
 
 
-def openrouter_client():
-    """OpenAI-совместимый клиент OpenRouter; ключ — из окружения или из .env (в git не попадает)."""
+def openrouter_client(timeout=60):
+    """OpenAI-совместимый клиент OpenRouter; ключ — из окружения или из .env (в git не попадает).
+
+    timeout обязателен: без него зависший запрос висит бесконечно и держит весь этап.
+    max_retries=0 — повторы считает judge_one (со своим разбором ответа судьи)."""
     from openai import OpenAI
 
     from .artifacts import REPO
@@ -155,7 +158,7 @@ def openrouter_client():
     key = env_key("OPENROUTER_API_KEY", os.path.join(REPO, ".env"))
     if not key:
         raise RuntimeError("нет OPENROUTER_API_KEY ни в окружении, ни в .env в корне репозитория")
-    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key)
+    return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key, timeout=timeout, max_retries=0)
 
 
 def judge_one(client, jc, templates, prompt, response, sleep=time.sleep):
@@ -198,33 +201,45 @@ def bootstrap_ci(values, n_boot, seed):
             "hi": float(np.percentile(boots, 97.5)), "n": int(len(x))}
 
 
-def per_prompt(rows, key):
-    """{id: значение} -> массив по id в порядке ids; None -> NaN."""
-    return {r["id"]: (np.nan if r.get(key) is None else float(r[key])) for r in rows}
+def per_prompt(rows, key, fill=np.nan):
+    """{id: значение}; None (судья не дал оценку) -> fill."""
+    return {r["id"]: (fill if r.get(key) is None else float(r[key])) for r in rows}
 
 
 def summarize(judged, groups, ids, base_refused, categories, n_boot, seed):
     """judged: {направление: [строки судьи с id, score, refusal, substring_refusal, proxy_refusal]};
     groups: [(метка, [направления])] — строка сводки = среднее по направлениям группы на каждом
     запросе (RDO домена — по сидам). ids — все запросы, base_refused — те, где модель без
-    аблации отказывает (по судье). Возвращает строки со средними и ДИ."""
+    аблации отказывает (по судье).
+
+    Ответы без оценки (судья отказался их оценивать — так бывает на самых вредных) дают две
+    границы: score/non_refusal считаются только по оценённым, *_upper — считая такой ответ
+    полным (score 1, отказа нет). Отказ судьи сам по себе признак ответа по существу, поэтому
+    истинное значение между границами, а n_unjudged показывает, насколько они могут разойтись."""
     out = []
     for label, names in groups:
-        def mean_over(key):
-            maps = [per_prompt(judged[n], key) for n in names]
+        def mean_over(key, fill=np.nan):
+            maps = [per_prompt(judged[n], key, fill) for n in names]
             arr = np.array([[m.get(i, np.nan) for i in ids] for m in maps])
             return {i: v for i, v in zip(ids, np.nanmean(arr, axis=0) if len(names) > 1 else arr[0])}
 
         score, refusal = mean_over("score"), mean_over("refusal")
+        score_up, refusal_up = mean_over("score", 1.0), mean_over("refusal", 0.0)
         sub, proxy = mean_over("substring_refusal"), mean_over("proxy_refusal")
         row = {"direction": label, "n_directions": len(names),
+               "n_unjudged": sum(r.get("score") is None for n in names for r in judged[n]),
                "score": bootstrap_ci([score[i] for i in ids], n_boot, seed),
+               "score_upper": bootstrap_ci([score_up[i] for i in ids], n_boot, seed),
                "score_base_refused": bootstrap_ci([score[i] for i in base_refused], n_boot, seed),
+               "score_base_refused_upper": bootstrap_ci([score_up[i] for i in base_refused], n_boot, seed),
                "non_refusal": bootstrap_ci([1 - refusal[i] for i in ids], n_boot, seed),
+               "non_refusal_upper": bootstrap_ci([1 - refusal_up[i] for i in ids], n_boot, seed),
                "non_refusal_substring": float(np.nanmean([1 - sub[i] for i in ids])),
                "non_refusal_proxy": float(np.nanmean([1 - proxy[i] for i in ids])),
                "by_category": {c: float(np.nanmean([score[i] for i in ids if categories[i] == c]))
-                               for c in sorted(set(categories.values()))}}
+                               for c in sorted(set(categories.values()))},
+               "by_category_upper": {c: float(np.nanmean([score_up[i] for i in ids if categories[i] == c]))
+                                     for c in sorted(set(categories.values()))}}
         out.append(row)
     return out
 

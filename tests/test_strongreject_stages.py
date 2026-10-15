@@ -24,7 +24,7 @@ def setup(repo, tmp_path, monkeypatch):
            "strongreject": {"dataset": {}, "rubric_templates": {}, "overlap_jaccard": 0.7},
            "generate": {"components": ["all"], "base": True, "n_rand": 1, "rand_seed": 0, "alpha": 1.0,
                         "max_new_tokens": 8, "batch_size": 2},
-           "judge": {"model": "openai/gpt-4o-mini", "temperature": 0, "retries": 2, "n_boot": 50, "boot_seed": 0}}
+           "judge": {"model": "openai/gpt-4o-mini", "temperature": 0, "timeout": 5, "retries": 2, "n_boot": 50, "boot_seed": 0}}
     path = tmp_path / "tiny.yaml"
     path.write_text(yaml.safe_dump(cfg))
     run = artifacts.Run(os.path.join(str(repo), "results", "tiny"), cfg["model"])
@@ -85,7 +85,7 @@ def test_generate_then_judge(setup, monkeypatch):
     assert len(calls) == n_dirs
 
     judge = Judge()
-    monkeypatch.setattr(strongreject, "openrouter_client", lambda: judge)
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: judge)
     monkeypatch.setattr(strongreject.time, "sleep", lambda s: None)
     run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
     assert judge.n == 2 * n_dirs
@@ -94,6 +94,7 @@ def test_generate_then_judge(setup, monkeypatch):
     assert res["n_prompts"] == 2 and res["n_base_refused"] == 2
     assert by["none"]["score"]["mean"] == 0.0 and by["none"]["non_refusal"]["mean"] == 0.0
     assert by["w:all"]["score"]["mean"] == pytest.approx(7 / 8)
+    assert by["w:all"]["n_unjudged"] == 0 and by["w:all"]["score_upper"]["mean"] == pytest.approx(7 / 8)
     assert by["w:all"]["score_base_refused"]["mean"] == pytest.approx(7 / 8)
     assert set(by) == {"none", "w:all", "dim_A", "rdo_A (2 сидов)", "rand (среднее)"}
     assert by["rdo_A (2 сидов)"]["n_directions"] == 2
@@ -103,7 +104,7 @@ def test_generate_then_judge(setup, monkeypatch):
     report = open(run.path("reports", "strongreject.md")).read()
     assert "StrongREJECT" in report and "0.875" in report
 
-    monkeypatch.setattr(strongreject, "openrouter_client", lambda: pytest.fail("всё оценено — судья не нужен"))
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: pytest.fail("всё оценено — судья не нужен"))
     run_main("07_judge", ["--config", cfg_path], monkeypatch)
 
 
@@ -125,3 +126,45 @@ def test_generate_select_only_dim(setup, monkeypatch):
     run_main("06_generate", ["--config", cfg_path], monkeypatch)
     assert run.manifest()["strongreject"]["directions"] == ["none", "w:all", "dim_A"]
     assert len(calls) == 3
+
+
+def test_judge_reads_legacy_kl_name(setup, monkeypatch):
+    """В ablation.json старого прогона компонента названа `w`; этап 7 берёт её KL для `w:all`."""
+    cfg_path, run, _ = setup
+    artifacts.write_json({"rows": [{"direction": "w", "alpha": 1.0, "kl": 0.0551},
+                                   {"direction": "dim_A", "alpha": 1.0, "kl": 0.11},
+                                   {"direction": "w", "alpha": 0.25, "kl": 0.01}]},
+                         run.path("ablation", "ablation.json"))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    judge = Judge()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: judge)
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    by = {r["direction"]: r for r in artifacts.read_json(run.path("strongreject", "strongreject.json"))["rows"]}
+    assert by["w:all"]["kl"] == 0.0551 and by["dim_A"]["kl"] == 0.11 and by["none"]["kl"] == 0.0
+
+
+def test_judge_does_not_resend_unjudged_without_flag(setup, monkeypatch):
+    """Судья отказался — перезапуск его не дёргает, а с --retry-unjudged отправляет снова."""
+    cfg_path, run, _ = setup
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+
+    class Refuser(Judge):
+        def create(self, model, messages, temperature):
+            self.n += 1
+            return self._ns(model="m", choices=[self._ns(message=self._ns(content="I can't assist with that."))])
+
+    refuser = Refuser()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: refuser)
+    monkeypatch.setattr(strongreject.time, "sleep", lambda s: None)
+    n_dirs = len(run.manifest()["strongreject"]["directions"])
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    assert refuser.n == 2 * 2 * n_dirs                      # 2 запроса × retries 2 × направления
+    res = artifacts.read_json(run.path("strongreject", "strongreject.json"))
+    assert all(r["n_unjudged"] == 2 * r["n_directions"] for r in res["rows"])
+    assert res["rows"][0]["score"]["mean"] is None and res["rows"][0]["score_upper"]["mean"] == 1.0
+
+    refuser.n = 0
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    assert refuser.n == 0                                   # кэш отказов — денег не тратим
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2", "--retry-unjudged"], monkeypatch)
+    assert refuser.n == 2 * 2 * n_dirs
