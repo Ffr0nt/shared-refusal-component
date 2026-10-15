@@ -20,13 +20,17 @@ OWN = {"data": ("dataset", "domains", "splits"),
        "component": ("component",),
        "ablation": ("ablation",),
        "analysis": (),
-       "convergence": ("convergence",)}
+       "convergence": ("convergence",),
+       "generate": ("strongreject", "generate"),
+       "judge": ("judge",)}
 UPSTREAM = {"data": (),
             "directions": ("data",),
             "component": ("directions",),
             "ablation": ("data", "directions", "component"),
             "analysis": ("directions", "component"),
-            "convergence": ("directions",)}
+            "convergence": ("directions",),
+            "generate": ("data", "directions", "component"),
+            "judge": ("generate",)}
 
 
 def sections(stage):

@@ -17,13 +17,18 @@ def test_sections_include_upstream():
     assert P.sections("data") == {"dataset", "domains", "splits"}
     assert P.sections("component") == {"component", "model", "model_revision", "rdo", "dataset", "domains", "splits"}
     assert "component" in P.sections("analysis") and "ablation" not in P.sections("analysis")
+    assert {"strongreject", "generate", "splits", "rdo", "component"} <= P.sections("generate")
+    assert "ablation" not in P.sections("generate")
+    assert P.sections("judge") == P.sections("generate") | {"judge"}
 
 
 @pytest.mark.parametrize("change, affected, unaffected", [
     ({"component": {"variants": {"all": {}, "dim_only": {"methods": ["dim"]}}}}, ["component", "analysis", "ablation"],
      ["data", "directions"]),
     ({"rdo": {"seeds": {"A": [2]}}}, ["directions", "component", "ablation", "analysis"], ["data"]),
-    ({"ablation": {"alphas": [0.5]}}, ["ablation"], ["data", "directions", "component", "analysis"]),
+    ({"ablation": {"alphas": [0.5]}}, ["ablation"], ["data", "directions", "component", "analysis", "generate"]),
+    ({"generate": {"alpha": 0.5}}, ["generate", "judge"], ["data", "directions", "component", "ablation"]),
+    ({"judge": {"model": "other"}}, ["judge"], ["generate", "ablation"]),
     ({"run_name": "y", "config_path": "configs/y.yaml"}, [], list(P.OWN)),
 ])
 def test_stage_hash_changes_only_downstream(change, affected, unaffected):

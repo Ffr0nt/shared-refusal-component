@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Этапы пайплайна подряд для одного конфига. Общая логика — конкретные запуски в launch/.
 #
-#   CONFIG=configs/<имя>.yaml GPU=0 bash scripts/pipeline.sh                  # все этапы 00–05
+#   CONFIG=configs/<имя>.yaml GPU=0 bash scripts/pipeline.sh                  # этапы 00–06
+#   CONFIG=configs/<имя>.yaml STEPS=07 bash scripts/pipeline.sh               # судья (нужен OPENROUTER_API_KEY)
 #   CONFIG=configs/<имя>.yaml STEPS="02 04" bash scripts/pipeline.sh          # только CPU-этапы
 #   CONFIG=configs/<имя>.yaml STEPS=01 bash scripts/pipeline.sh --assemble-only   # аргументы — одному этапу
 #
 # Env:
 #   CONFIG         обязателен;
 #   CONFIG_SHA256  если задан — конфиг должен иметь ровно этот хэш (так launch/ фиксирует запуск);
-#   STEPS          этапы по порядку (по умолчанию "00 01 02 03 04 05");
-#   GPU            индекс карты, обязателен, если среди STEPS есть GPU-этап (01, 03);
+#   STEPS          этапы по порядку (по умолчанию "00 01 02 03 04 05 06"; 07 — отдельно, где есть
+#                  выход к OpenRouter);
+#   GPU            индекс карты, обязателен, если среди STEPS есть GPU-этап (01, 03, 06);
 #   FORK, HF_HOME  пути к форку и HF-кэшу.
 # Ни одна из переменных, кроме CONFIG, на числа не влияет.
 set -euo pipefail
@@ -28,13 +30,13 @@ if [[ -n "${CONFIG_SHA256:-}" ]]; then
   fi
 fi
 
-STEPS="${STEPS:-00 01 02 03 04 05}"
+STEPS="${STEPS:-00 01 02 03 04 05 06}"
 read -ra STEP_LIST <<< "$STEPS"
 if (( $# > 0 && ${#STEP_LIST[@]} != 1 )); then
   echo "аргументы ($*) можно передать только одному этапу: STEPS=<этап>" >&2; exit 1
 fi
 for STEP in "${STEP_LIST[@]}"; do
-  if [[ "$STEP" == 01 || "$STEP" == 03 ]] && [[ " $* " != *" --assemble-only "* ]]; then
+  if [[ "$STEP" == 01 || "$STEP" == 03 || "$STEP" == 06 ]] && [[ " $* " != *" --assemble-only "* ]]; then
     : "${GPU:?этап $STEP требует GPU=<индекс>}"
   fi
 done

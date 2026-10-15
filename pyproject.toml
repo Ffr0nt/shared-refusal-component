@@ -10,6 +10,7 @@ requires-python = ">=3.10,<3.11"
 dependencies = [
     "geometry-of-refusal",
     "datasets>=3.0",
+    "openai>=1.40",             # клиент OpenRouter для судьи StrongREJECT (этап 07)
     "pandas",
     "pyyaml",
 ]

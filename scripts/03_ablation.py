@@ -13,27 +13,9 @@ import argparse
 import functools
 import os
 
-import torch
-
-from shared_refusal import ablation, component, models, provenance, report
-from shared_refusal.artifacts import DirectionSet, Run, read_json, write_json
+from shared_refusal import ablation, models, provenance, report
+from shared_refusal.artifacts import Run, read_json, write_json
 from shared_refusal.config import load_config
-from shared_refusal.geometry import random_directions
-
-
-def directions_to_test(cfg, run):
-    ac = cfg["ablation"]
-    base = DirectionSet.load(run.path("directions", "directions.pt"))
-    ws = [component.load_w(run.component(v)) for v in ac["components"]]
-    ds = DirectionSet([f"w:{v}" for v in ac["components"]], torch.stack(ws) if ws else torch.empty(0, base.hidden),
-                      [{"method": "component", "domain": None, "variant": v} for v in ac["components"]])
-    if ac["base"]:
-        ds = ds + base
-    rand = random_directions(base.hidden, ac["n_rand"], seed=ac["rand_seed"])
-    if rand:
-        ds = ds + DirectionSet.from_raw([f"rand_{i}" for i in range(len(rand))], rand,
-                                        [{"method": "random", "domain": None} for _ in rand])
-    return ds
 
 
 def main():
@@ -53,7 +35,7 @@ def main():
 
     harmful = {d: test_prompts(d, "harmful") for d in domains}
     harmless = test_prompts(domains[0], "harmless")
-    ds = directions_to_test(cfg, run)
+    ds = ablation.directions_to_test(ac, run)
 
     model = models.load(cfg["model"], cfg["model_revision"])
     forward = functools.partial(models.last_token_logits, model, batch_size=ac["batch_size"])

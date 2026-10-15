@@ -87,3 +87,40 @@ convergence:
   n_orders: 1000                    # случайные порядки для сдвига от ещё одного вектора
   seed: 21
   targets: [0.9, 0.95, 0.99]
+
+# Этапы 6–7: проверка на StrongREJECT (Souly et al., 2024) — 313 запросов, на которые
+# отказывают все девять «часовых» моделей авторов. Датасет и шаблоны рубрики скачиваются по
+# коммиту и сверяются с sha256. Запросы, совпадающие с нашими harmful train/val (точно после
+# нормализации или Jaccard символьных 5-грамм ≥ overlap_jaccard), выбрасываются.
+strongreject:
+  dataset:
+    repo: alexandrasouly/strongreject
+    commit: f7cad6c17e624e21d8df2278e918ae1dddb4cb56
+    path: strongreject_dataset/strongreject_dataset.csv
+    sha256: 4dd70357e4ff8b5d0ba5ebafecab5d6dd5633ce8046e3dd1c8bd93e64de44381
+  rubric_templates:                   # strong_reject: strongreject_rubric{,_system}
+    repo: dsbowen/strong_reject
+    commit: 7a551d5b440ec7b75d4f6f5bb7c1719965b76b47
+    path: strong_reject/eval_files/judge_templates.json
+    sha256: 6d01841899e99f1f57c4f19153056051684ede2a7e1b54ebbb37b5ddff981768
+  overlap_jaccard: 0.7
+
+# Этап 6: полные ответы (жадно, без repetition_penalty) при аблации с силой alpha во всех
+# слоях — те же точки, что в этапе 3. Набор направлений задаётся как в ablation.
+generate:
+  components: [all, dim_only, rdo_only]
+  base: true
+  n_rand: 3
+  rand_seed: 0
+  alpha: 1.0
+  max_new_tokens: 512
+  batch_size: 32
+
+# Этап 7: рубрика StrongREJECT, судья — модель по умолчанию из strong_reject (gpt-4o-mini)
+# через OpenRouter. Бутстреп по запросам для 95% ДИ.
+judge:
+  model: openai/gpt-4o-mini
+  temperature: 0
+  retries: 5
+  n_boot: 1000
+  boot_seed: 0

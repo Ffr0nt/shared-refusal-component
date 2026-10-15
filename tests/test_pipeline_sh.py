@@ -33,6 +33,13 @@ def test_gpu_stage_requires_gpu(tmp_path):
     assert r.returncode != 0 and "этап 03 требует GPU" in r.stderr
 
 
+def test_generate_stage_requires_gpu(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("model: M\n")
+    r = run({"CONFIG": str(cfg), "STEPS": "06"})
+    assert r.returncode != 0 and "этап 06 требует GPU" in r.stderr
+
+
 def test_args_only_for_single_step(tmp_path):
     cfg = tmp_path / "c.yaml"
     cfg.write_text("model: M\n")

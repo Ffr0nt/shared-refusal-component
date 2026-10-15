@@ -7,6 +7,8 @@
     component/<вариант>/                                     этап 2
     ablation/                                                этап 3
     analysis/<вариант>/                                      этап 4
+    convergence/                                             этап 5
+    strongreject/{prompts.json,generations/,judge/,strongreject.json}   этапы 6–7
     reports/*.md, logs/*.log, manifest.json (с provenance каждого этапа)
 """
 import json

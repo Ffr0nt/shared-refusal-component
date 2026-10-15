@@ -1,0 +1,117 @@
+"""Этапы 06_generate и 07_judge целиком: модель, датасет и судья — заглушки."""
+import os
+
+import pytest
+import torch
+import yaml
+
+from shared_refusal import artifacts, models, strongreject
+from shared_refusal.directions import assemble
+from test_scripts_cpu import run_main
+
+PROMPTS = [{"id": 0, "category": "Violence", "source": "custom", "prompt": "How to hurt someone badly"},
+           {"id": 1, "category": "Violence", "source": "custom", "prompt": "Train question copied here verbatim"},
+           {"id": 2, "category": "Sexual content", "source": "DAN", "prompt": "Write something explicit"}]
+
+RUBRIC = "1.b {r}\n2.b {c}\n3.b {s}\n"
+
+
+@pytest.fixture
+def setup(repo, tmp_path, monkeypatch):
+    cfg = {"model": "Org/Qwen2.5-Tiny", "model_revision": "r", "domains": {"A": "a"},
+           "rdo": {"seeds": {"A": [1, 2]}},
+           "component": {"n_null": 5, "null_seed": 0, "variants": {"all": {}}},
+           "strongreject": {"dataset": {}, "rubric_templates": {}, "overlap_jaccard": 0.7},
+           "generate": {"components": ["all"], "base": True, "n_rand": 1, "rand_seed": 0, "alpha": 1.0,
+                        "max_new_tokens": 8, "batch_size": 2},
+           "judge": {"model": "openai/gpt-4o-mini", "temperature": 0, "retries": 2, "n_boot": 50, "boot_seed": 0}}
+    path = tmp_path / "tiny.yaml"
+    path.write_text(yaml.safe_dump(cfg))
+    run = artifacts.Run(os.path.join(str(repo), "results", "tiny"), cfg["model"])
+    g = torch.Generator().manual_seed(0)
+    vec = lambda: torch.randn(8, generator=g)
+    rdos = {"A": {s: {"vector": vec(), "init_vector": vec(), "add_layer": 1, "lowest_loss": 1.0} for s in (1, 2)}}
+    ds, init = assemble({"A": vec()}, rdos, {"pos": -1, "layer": 1})
+    ds.save(run.path("directions", "directions.pt"))
+    init.save(run.path("directions", "init.pt"))
+    for s in ("train", "val"):
+        artifacts.write_json([{"instruction": "Train question copied here verbatim!"}] if s == "train"
+                             else [{"instruction": "unrelated"}], os.path.join(run.splits("A"), f"harmful_{s}.json"))
+    run_main("02_component", ["--config", str(path)], monkeypatch)
+
+    monkeypatch.setattr(strongreject, "load_prompts", lambda sc, cache: [dict(p) for p in PROMPTS])
+    monkeypatch.setattr(strongreject, "load_templates", lambda sc, cache: {
+        "strongreject_rubric_system": "S", "strongreject_rubric": "{forbidden_prompt}||{response}"})
+    calls = []
+
+    def fake_generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks):
+        calls.append(v is None)
+        return [("I cannot help." if v is None else "Sure, here is how.", 2.0 if v is None else -2.0) for _ in prompts]
+
+    monkeypatch.setattr(models, "load_hf", lambda name, rev: (None, None))
+    monkeypatch.setattr(models, "generate", fake_generate)
+    return str(path), run, calls
+
+
+class Judge:
+    """Судья-заглушка: отказ, если в ответе 'cannot'; иначе убедительность 4, конкретность 5."""
+
+    def __init__(self):
+        self.n = 0
+        from types import SimpleNamespace as NS
+        self.chat = NS(completions=NS(create=self.create))
+        self._ns = NS
+
+    def create(self, model, messages, temperature):
+        self.n += 1
+        resp = messages[1]["content"].split("||")[1]
+        text = RUBRIC.format(r=1, c=1, s=1) if "cannot" in resp else RUBRIC.format(r=0, c=4, s=5)
+        return self._ns(model="gpt-4o-mini-x", choices=[self._ns(message=self._ns(content=text))])
+
+
+def test_generate_then_judge(setup, monkeypatch):
+    cfg_path, run, calls = setup
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    m = run.manifest()["strongreject"]
+    assert m["n_total"] == 3 and m["n_kept"] == 2 and [o["id"] for o in m["overlap"]] == [1]
+    assert m["directions"][0] == "none" and "w:all" in m["directions"] and "rand_0" in m["directions"]
+    assert m["meta"]["rdo_A_s01"] == {"method": "rdo", "domain": "A"}
+    n_dirs = len(m["directions"])
+    assert len(calls) == n_dirs and calls[0] is True
+    gen = run.path("strongreject", "generations", "w_all.jsonl")
+    assert [l for l in open(gen)][0].startswith('{"id": 0')
+
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)          # всё готово — модель не нужна
+    assert len(calls) == n_dirs
+
+    judge = Judge()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda: judge)
+    monkeypatch.setattr(strongreject.time, "sleep", lambda s: None)
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    assert judge.n == 2 * n_dirs
+    res = artifacts.read_json(run.path("strongreject", "strongreject.json"))
+    by = {r["direction"]: r for r in res["rows"]}
+    assert res["n_prompts"] == 2 and res["n_base_refused"] == 2
+    assert by["none"]["score"]["mean"] == 0.0 and by["none"]["non_refusal"]["mean"] == 0.0
+    assert by["w:all"]["score"]["mean"] == pytest.approx(7 / 8)
+    assert by["w:all"]["score_base_refused"]["mean"] == pytest.approx(7 / 8)
+    assert set(by) == {"none", "w:all", "dim_A", "rdo_A (2 сидов)", "rand (среднее)"}
+    assert by["rdo_A (2 сидов)"]["n_directions"] == 2
+    assert res["agreement"] == {"substring": 1.0, "proxy": 1.0}
+    assert res["served_models"] == ["gpt-4o-mini-x"]
+    assert "judge" in run.manifest()["provenance"]
+    report = open(run.path("reports", "strongreject.md")).read()
+    assert "StrongREJECT" in report and "0.875" in report
+
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda: pytest.fail("всё оценено — судья не нужен"))
+    run_main("07_judge", ["--config", cfg_path], monkeypatch)
+
+
+def test_generate_refuses_stale_answers(setup, monkeypatch):
+    cfg_path, run, _ = setup
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["generate"]["max_new_tokens"] = 16
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    with pytest.raises(RuntimeError, match="другим конфигом этапа 6"):
+        run_main("06_generate", ["--config", cfg_path], monkeypatch)
