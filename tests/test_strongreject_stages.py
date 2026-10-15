@@ -109,13 +109,36 @@ def test_generate_then_judge(setup, monkeypatch):
 
 
 def test_generate_refuses_stale_answers(setup, monkeypatch):
+    """Изменились параметры генерации — к прежним ответам не дописываем."""
     cfg_path, run, _ = setup
     run_main("06_generate", ["--config", cfg_path], monkeypatch)
     cfg = yaml.safe_load(open(cfg_path))
     cfg["generate"]["max_new_tokens"] = 16
     open(cfg_path, "w").write(yaml.safe_dump(cfg))
-    with pytest.raises(RuntimeError, match="другим конфигом этапа 6"):
+    with pytest.raises(RuntimeError, match="другими запросами или"):
         run_main("06_generate", ["--config", cfg_path], monkeypatch)
+
+
+def test_generate_adds_directions_to_existing_answers(setup, monkeypatch):
+    """Набор направлений на текст ответа не влияет: новые дописываются, готовые не трогаются."""
+    cfg_path, run, calls = setup
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["generate"].update(select={"methods": ["dim"]}, n_rand=0)
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    assert run.manifest()["strongreject"]["directions"] == ["none", "w:all", "dim_A"]
+    before = {f: open(run.path("strongreject", "generations", f)).read()
+              for f in os.listdir(run.path("strongreject", "generations"))}
+    calls.clear()
+
+    cfg["generate"].update(select={}, n_rand=1)
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    m = run.manifest()["strongreject"]
+    assert m["directions"] == ["none", "w:all", "dim_A", "rdo_A_s01", "rdo_A_s02", "rand_0"]
+    assert len(calls) == 3                                      # только два RDO и случайный
+    for f, text in before.items():
+        assert open(run.path("strongreject", "generations", f)).read() == text
 
 
 def test_generate_select_only_dim(setup, monkeypatch):

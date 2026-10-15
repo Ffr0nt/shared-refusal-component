@@ -11,6 +11,7 @@ strongreject/generations/<направление>.jsonl ({id, response, proxy_sc
 пропускаются.
 """
 import argparse
+import hashlib
 import json
 import os
 
@@ -33,13 +34,22 @@ def done(path, ids):
         return [json.loads(line)["id"] for line in f] == ids
 
 
+def answer_hash(cfg):
+    """Хэш того, что влияет на сам текст ответа: секция strongreject (набор запросов) и
+    параметры генерации. batch_size включён: в bf16 разбиение на батчи может чуть сдвинуть
+    числа. Набор направлений не включён — он определяет, какие файлы появятся, а не
+    содержимое уже посчитанных, поэтому добавить направления можно к готовым ответам."""
+    keys = ("alpha", "max_new_tokens", "batch_size")
+    payload = {"strongreject": cfg["strongreject"], "generate": {k: cfg["generate"][k] for k in keys}}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
 def check_own(run, cfg):
-    """Готовые ответы посчитаны с этим же конфигом этапа — иначе не дописываем к ним новые."""
-    prev = run.manifest().get("provenance", {}).get("generate")
-    if prev and prev["config_hash"] != provenance.stage_hash(cfg, "generate") \
-            and os.path.isdir(run.path("strongreject", "generations")):
-        raise RuntimeError("ответы в strongreject/generations посчитаны с другим конфигом этапа 6; "
-                           "удали эту папку или заведи новый запуск")
+    """Готовые ответы сгенерированы с теми же запросами и параметрами — иначе не дописываем."""
+    prev = run.manifest().get("strongreject", {}).get("answer_hash")
+    if prev and prev != answer_hash(cfg) and os.path.isdir(run.path("strongreject", "generations")):
+        raise RuntimeError("ответы в strongreject/generations сгенерированы с другими запросами или "
+                           "параметрами генерации; удали эту папку или заведи новый запуск")
 
 
 def select_prompts(cfg, run):
@@ -88,7 +98,7 @@ def main():
             print(f"{name:14s} готово: доля отказа по прокси {refused:.3f}", flush=True)
 
     run.update_manifest("strongreject", {
-        "n_total": len(rows), "n_kept": len(kept),
+        "n_total": len(rows), "n_kept": len(kept), "answer_hash": answer_hash(cfg),
         "overlap": [{"id": r["id"], "jaccard": r["overlap"]["jaccard"], "exact": r["overlap"]["exact"]} for r in dropped],
         "directions": [NONE] + ds.names,
         "meta": {NONE: {"method": NONE, "domain": None},
