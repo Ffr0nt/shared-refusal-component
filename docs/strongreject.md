@@ -95,15 +95,16 @@ al. и RDO. Шаблон чата — наш (`models.FAMILIES`), тот же, �
 STEPS=06 GPU=1 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh
 ```
 
-С сервера OpenRouter недоступен (403), поэтому судья — на Mac по копии папки результатов:
+С сервера OpenRouter недоступен (403), поэтому судья — на Mac по копии папки результатов
+(rsync на сервере нет — копируем tar через ssh):
 
 ```bash
-rsync -az peaceful-matsumoto:~/f.zakharov/shared-refusal-component/results/qwen2.5-3b_salad-o1o2o5o6/ \
-  results/qwen2.5-3b_salad-o1o2o5o6/
-OPENROUTER_API_KEY=… STEPS=07 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh
-rsync -az results/qwen2.5-3b_salad-o1o2o5o6/{strongreject,reports,manifest.json} \
-  peaceful-matsumoto:~/f.zakharov/shared-refusal-component/results/qwen2.5-3b_salad-o1o2o5o6/
+R=qwen2.5-3b_salad-o1o2o5o6
+ssh peaceful-matsumoto "cd ~/f.zakharov/shared-refusal-component/results && tar czf - $R" | tar xzf - -C results/
+OPENROUTER_API_KEY=… STEPS=07 bash launch/$R.sh
+tar czf - -C results/$R strongreject reports manifest.json | \
+  ssh peaceful-matsumoto "tar xzf - -C ~/f.zakharov/shared-refusal-component/results/$R"
 ```
 
-Обратный rsync перезаписывает `manifest.json` на сервере — между копированиями на сервере
+Обратное копирование перезаписывает `manifest.json` на сервере — между копированиями на сервере
 не должны идти другие этапы этого запуска.
