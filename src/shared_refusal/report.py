@@ -113,3 +113,51 @@ def strongreject(alias, res, m):
         lines += ["", "Ответов без оценки судьи: " +
                   ", ".join(f"{n} — {k}" for n, k in res["missing"].items() if k) + "."]
     return lines
+
+
+def decompose(alias, res):
+    scales = [str(s) for s in res["scales"]]
+    base, rows = res["base"], res["rows"]
+    by = {r["direction"]: r for r in rows}
+    rand = [r for r in rows if r["kind"] == "random"]
+    first = next(r["direction"] for r in rows if r["kind"] == "dim")
+
+    def cells(r):
+        rd = r["read"]
+        return [f"**{r['bypass']:.3f}**", f"{r['kl']:.4f}"] + [f"{r['induce'][s]:.3f}" for s in scales] + \
+               [f"{rd['auroc']:.3f} [{rd['ci'][0]:.3f}, {rd['ci'][1]:.3f}]"]
+
+    head = ["направление", "доля энергии DIM", "bypass (ASR)", "KL"] + [f"induce s={s}" for s in scales] + \
+           ["read AUROC [95% ДИ]"]
+    lines = [f"# Разложение DIM — {alias}", "",
+             f"Точка DIM: pos {res['point']['pos']}, слой {res['point']['layer']}; α0 = ‖DIM union‖ = {res['alpha0']:.2f}. "
+             f"harmful_test {res['n_harmful']}, harmless_test {res['n_harmless']}.", "",
+             "bypass — ASR (refusal_score < 0) при аблации a = 1 во всех слоях, KL — на harmless_test; "
+             "induce — доля harmless_test с refusal_score > 0 при h + s·α0·v̂ на входе слоя DIM; "
+             "read — AUROC проекции активации в точке DIM, max(auc, 1 − auc). Всё — прокси, без судьи.", ""]
+    for var, energy in res["energy"].items():
+        w = f"w:{var}"
+        table_rows = [["без вмешательства", "—", f"{base['asr_mean']:.3f}", "0"] +
+                      [f"{base['induce']:.3f}"] * len(scales) + ["—"]]
+        for name, share in [(first, "1"), (f"{first}⊥{w}", f"{1 - energy[first]:.3f}"),
+                            (w, f"{energy[first]:.3f}"), (f"{w}⊥{first}", "—")]:
+            table_rows.append([name, share] + cells(by[name]))
+        if rand:
+            m = {"bypass": sum(r["bypass"] for r in rand) / len(rand), "kl": sum(r["kl"] for r in rand) / len(rand),
+                 "induce": {s: sum(r["induce"][s] for r in rand) / len(rand) for s in scales},
+                 "read": {"auroc": sum(r["read"]["auroc"] for r in rand) / len(rand),
+                          "ci": [min(r["read"]["ci"][0] for r in rand), max(r["read"]["ci"][1] for r in rand)]}}
+            table_rows.append([f"rand (среднее {len(rand)})", "—"] + cells(m))
+        lines += [f"## Компонента `{var}`", ""] + table(head, table_rows) + [""]
+        dom = [r for r in rows if r["kind"] == "dim" and r["direction"] != first]
+        if dom:
+            lines += ["По доменам (DIM домена и его остаток):", ""]
+            k = "1" if "1" in scales else scales[0]
+            lines += table(["DIM", "доля вдоль w", "bypass DIM", "bypass остатка", f"induce s={k} DIM",
+                            f"induce s={k} остатка", "read DIM", "read остатка"],
+                           [[r["direction"], f"{energy[r['direction']]:.3f}", f"{r['bypass']:.3f}",
+                             f"{by[r['direction'] + '⊥' + w]['bypass']:.3f}", f"{r['induce'][k]:.3f}",
+                             f"{by[r['direction'] + '⊥' + w]['induce'][k]:.3f}",
+                             f"{r['read']['auroc']:.3f}", f"{by[r['direction'] + '⊥' + w]['read']['auroc']:.3f}"]
+                            for r in dom]) + [""]
+    return lines

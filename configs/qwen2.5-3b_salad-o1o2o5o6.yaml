@@ -127,3 +127,17 @@ judge:
   retries: 5
   n_boot: 1000
   boot_seed: 0
+
+# Этап 8: разложение DIM. Для каждого DIM (dims: union и домены) и компоненты вариантов
+# components — остаток DIM⊥w и w⊥DIM; для всех — bypass (аблация a = 1, как этап 3), induce
+# (h + s·α0·v̂ на входе слоя DIM, α0 = ‖DIM union‖, s из scales) и read (AUROC проекции в точке
+# DIM, бутстрэп n_boot). Плюс n_rand случайных.
+decompose:
+  components: [all, rdo_only]
+  dims: [union, O1, O2, O5, O6]
+  scales: [0.5, 1, 2, 4]
+  n_rand: 3
+  rand_seed: 0
+  batch_size: 16
+  n_boot: 1000
+  boot_seed: 0

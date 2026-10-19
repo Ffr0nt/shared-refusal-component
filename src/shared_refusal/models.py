@@ -94,6 +94,34 @@ def last_token_logits(model, prompts, v, a, batch_size):
     return torch.cat(out)
 
 
+def steer_logits(model, prompts, v, coeff, layer, batch_size):
+    """Логиты последней позиции [n, vocab] при прибавлении coeff * v/|v| ко входу блока layer
+    на всех позициях (activation addition, как induce у Arditi et al.); v=None — без интервенции."""
+    if v is not None:
+        v = (v / v.norm()).to(model.dtype).to(model.device)
+    out = []
+    for i in range(0, len(prompts), batch_size):
+        with model.trace(prompts[i:i + batch_size]):
+            if v is not None:
+                layers(model)[layer].input += coeff * v
+            logits = model.lm_head.output[:, -1].save()
+        out.append(logits.value.detach().float().cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(out)
+
+
+def resid_at(model, prompts, layer, pos, batch_size):
+    """Активации [n, hidden] (float32, CPU) на входе блока layer в позиции pos (от конца), без
+    интервенций — то, по чему извлекается DIM."""
+    out = []
+    for i in range(0, len(prompts), batch_size):
+        with model.trace(prompts[i:i + batch_size]):
+            h = layers(model)[layer].input[:, pos].save()
+        out.append(h.value.detach().float().cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(out)
+
+
 # ---------------------------------------------------------------- генерация (этап 06)
 # Для генерации — обычная HF-модель с forward-хуками torch: та же аблация, что ablate()
 # (вход блока, выход attn, выход mlp), но на каждом шаге декодирования, с KV-кэшем.
