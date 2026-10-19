@@ -140,6 +140,6 @@ decompose:
   scales: [0.5, 1, 2, 4]
   n_rand: 3
   rand_seed: 0
-  batch_size: 16
+  batch_size: 4                     # 14B: 16 не влезало рядом с чужим процессом на карте (OOM 19.10)
   n_boot: 1000
   boot_seed: 0
