@@ -8,8 +8,9 @@
 #   STEPS="02 04 05" bash launch/qwen2.5-3b_salad-o1o2o5o6.sh         # только CPU-этапы
 #   GPU=0 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh    # то же в tmux с логом
 #   STEPS=08 GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh           # разложение DIM (19.10)
+#   STEPS="10 06 09" GPU=0 bash launch/qwen2.5-3b_salad-o1o2o5o6.sh   # остаток и вызов отказа для судьи, кросс-нейтрализация (22.10)
 #
 # Конфиг зафиксирован хэшем: правка конфига без обновления CONFIG_SHA256 не запустится.
 export CONFIG=configs/qwen2.5-3b_salad-o1o2o5o6.yaml
-export CONFIG_SHA256=2d6ef2de65e850f01658823e31d83260c154fa292aa3854b13c82b6ae19a9e9a
+export CONFIG_SHA256=bdfae593ec1ba7dcb62bc1fbaf4dc8322c75d9cb2b2643a9ddebdfe7c7458d00
 exec bash "$(dirname "$0")/../scripts/pipeline.sh" "$@"

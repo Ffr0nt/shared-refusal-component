@@ -76,3 +76,31 @@ def test_summary_table_groups_rdo_by_domain_and_random():
     assert rdo_a["kl"] == pytest.approx(0.2) and rdo_a["asr"] == pytest.approx({"A": 0.7, "B": 0.5})
     assert rdo_a["asr_mean"] == pytest.approx(0.6) and rdo_a["alpha"] == 0.5
     assert t[3]["asr"] == pytest.approx({"A": 0.3, "B": 0.2})
+
+
+def test_directions_to_test_adds_union_dim_and_residual(run):
+    import os
+
+    from conftest import SPEC
+    make_set(SPEC).save(run.path("directions", "directions.pt"))
+    g = torch.Generator().manual_seed(7)
+    dim_union = 5 * torch.randn(16, generator=g, dtype=torch.float64)
+    w = torch.nn.functional.normalize(torch.randn(16, generator=g, dtype=torch.float64), dim=0)
+    os.makedirs(run.dim("union"))
+    torch.save(dim_union, os.path.join(run.dim("union"), "direction.pt"))
+    os.makedirs(run.component("all"))
+    torch.save({"w": w}, os.path.join(run.component("all"), "component.pt"))
+
+    sec = {"components": ["all"], "base": True, "select": {"methods": ["dim"]}, "dims": ["union"],
+           "residuals": [{"dim": "union", "component": "all"}], "n_rand": 1, "rand_seed": 0}
+    ds = ablation.directions_to_test(sec, run)
+    assert ds.names == ["w:all", "dim_union", "dim_union⊥w:all", "dim_A", "dim_B", "rand_0"]
+    u = dim_union / dim_union.norm()
+    assert torch.allclose(ds["dim_union"], u)
+    r = ds["dim_union⊥w:all"]
+    assert abs(float(r @ w)) < 1e-10                           # остаток ортогонален w
+    assert torch.allclose(r, torch.nn.functional.normalize(u - (u @ w) * w, dim=0))
+    assert ds.meta[2] == {"method": "residual", "domain": "union", "variant": "all"}
+    # без новых ключей — прежний набор
+    old = ablation.directions_to_test({k: sec[k] for k in ("components", "base", "select", "n_rand", "rand_seed")}, run)
+    assert old.names == ["w:all", "dim_A", "dim_B", "rand_0"]

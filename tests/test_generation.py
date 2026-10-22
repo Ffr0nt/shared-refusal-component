@@ -104,3 +104,39 @@ def test_generate_batches_greedy_and_proxy(tiny, v):
     assert out[0][1] == pytest.approx(float(models.refusal_score(first, [3])[0]), abs=1e-4)
     ablated = models.generate(tiny, Tok(), prompts, v, 1.0, max_new_tokens=4, batch_size=2, refusal_toks=[3])
     assert [s for _, s in ablated] != [s for _, s in out]
+
+
+def test_addition_hooks_add_to_one_block_input(tiny, v):
+    seen = {}
+    target = tiny.model.layers[1]
+    h1 = target.register_forward_pre_hook(lambda m, a, k: seen.__setitem__("in", (a[0] if a else k["hidden_states"]).clone()),
+                                          with_kwargs=True)
+    ids = torch.randint(0, 50, (2, 5), generator=torch.Generator().manual_seed(5))
+    with torch.no_grad():
+        tiny(input_ids=ids)
+    raw = seen["in"]
+    h1.remove()
+    # h2 регистрируется после нашего хука — видит вход уже с прибавкой; норма v не важна
+    with models.addition_hooks(tiny, 2 * v, 3.0, 1):
+        h2 = target.register_forward_pre_hook(lambda m, a, k: seen.__setitem__("added", (a[0] if a else k["hidden_states"]).clone()),
+                                              with_kwargs=True)
+        with torch.no_grad():
+            tiny(input_ids=ids)
+        h2.remove()
+    assert torch.allclose(seen["added"] - raw, 3.0 * v.expand_as(raw), atol=1e-5)
+    assert not target._forward_pre_hooks
+    with models.addition_hooks(tiny, None, 3.0, 1), models.addition_hooks(tiny, v, 0, 1):
+        assert not target._forward_pre_hooks
+
+
+def test_generate_with_addition_and_first_token_only(tiny, v):
+    prompts = ["5 6 7", "8 9"]
+    base = models.generate(tiny, Tok(), prompts, None, 0, max_new_tokens=1, batch_size=2, refusal_toks=[3])
+    assert all(len(t.split()) == 1 for t, _ in base)
+    added = models.generate(tiny, Tok(), prompts, None, 0, max_new_tokens=1, batch_size=2, refusal_toks=[3],
+                            add=(v, 5.0, 1))
+    assert [s for _, s in added] != [s for _, s in base]
+    both = models.generate(tiny, Tok(), prompts, v, 1.0, max_new_tokens=1, batch_size=2, refusal_toks=[3],
+                           add=(v, 5.0, 1))
+    assert [s for _, s in both] != [s for _, s in added]     # вырезание v во всех слоях гасит прибавку дальше
+    assert not tiny.model.layers[1]._forward_pre_hooks

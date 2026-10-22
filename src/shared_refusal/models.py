@@ -176,6 +176,30 @@ def ablation_hooks(model, v, a):
             h.remove()
 
 
+@contextlib.contextmanager
+def addition_hooks(model, v, coeff, layer):
+    """Пока открыт контекст, h <- h + coeff * v/|v| на входе блока layer HF-модели на всех позициях
+    и каждом шаге декодирования (activation addition, как steer_logits). v=None или coeff=0 — без
+    интервенции. Вместе с ablation_hooks открывать после него: на входе блока сначала вырезание,
+    потом прибавление — как в кросс-нейтрализации common_axis."""
+    if v is None or coeff == 0:
+        yield
+        return
+    p = next(model.parameters())
+    add = coeff * (v / v.norm()).to(device=p.device, dtype=p.dtype)
+
+    def pre(mod, args, kwargs):
+        if args:
+            return (args[0] + add,) + tuple(args[1:]), kwargs
+        return args, {**kwargs, "hidden_states": kwargs["hidden_states"] + add}
+
+    h = layers(model)[layer].register_forward_pre_hook(pre, with_kwargs=True)
+    try:
+        yield
+    finally:
+        h.remove()
+
+
 class _FirstStepLogits:
     """LogitsProcessor: запоминает логиты первого шага декодирования (для прокси) и не меняет их.
     output_scores хранил бы логиты всех шагов: 512 × batch × vocab во float32 — гигабайты."""
@@ -190,9 +214,11 @@ class _FirstStepLogits:
 
 
 @torch.no_grad()
-def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks):
-    """Жадные ответы на готовые (с шаблоном) промпты при аблации v силы a.
-    Возвращает [(текст ответа, refusal_score первого шага)] — прокси на тех же ответах."""
+def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks, add=None):
+    """Жадные ответы на готовые (с шаблоном) промпты при аблации v силы a и, если задано
+    add = (u, coeff, layer), прибавлении coeff·û на входе блока layer (addition_hooks).
+    Возвращает [(текст ответа, refusal_score первого шага)] — прокси на тех же ответах;
+    при max_new_tokens = 1 это просто прокси первого токена."""
     from transformers import LogitsProcessorList
 
     out = []
@@ -200,7 +226,7 @@ def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks
         enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True,
                   add_special_tokens=False).to(next(model.parameters()).device)
         first = _FirstStepLogits()
-        with ablation_hooks(model, v, a):
+        with ablation_hooks(model, v, a), addition_hooks(model, *(add or (None, 0, 0))):
             seqs = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, temperature=None,
                                   top_p=None, top_k=None, repetition_penalty=1.0, pad_token_id=tok.pad_token_id,
                                   logits_processor=LogitsProcessorList([first]))

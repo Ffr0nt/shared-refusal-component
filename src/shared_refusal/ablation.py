@@ -7,23 +7,44 @@
   ASR — доля harmful_test домена с refusal_score < 0 (отказ снят), по каждому домену;
   KL  — на harmless_test между распределениями следующего токена до и после аблации.
 """
+import os
+
 import torch
 
+from . import decompose
 from .artifacts import DirectionSet
 from .component import load_w
 from .geometry import kl, random_directions
 from .models import refusal_score
 
 
+def load_dim(run, name):
+    """Сырой DIM (с нормой) из dim/<name>/direction.pt этапа 1; name — домен или union."""
+    return torch.load(os.path.join(run.dim(name), "direction.pt"), map_location="cpu", weights_only=True)
+
+
 def directions_to_test(sec, run):
     """Набор для аблации по секции конфига (ablation или generate): общие компоненты вариантов
     sec['components'] (имя `w:<вариант>`), при sec['base'] — все направления этапа 1, и
     sec['n_rand'] случайных (сид sec['rand_seed']; при тех же n_rand и сиде — те же векторы).
-    sec['select'] (необязательно) — отбор из направлений этапа 1, как в component.variants."""
+    sec['select'] (необязательно) — отбор из направлений этапа 1, как в component.variants.
+    Необязательно: sec['dims'] — DIM из dim/<имя>/ (имя `dim_<имя>`, нужно для union, которого нет
+    среди направлений этапа 1); sec['residuals'] — [{dim, component}]: остаток DIM⊥w, как в этапе 8
+    (имя `dim_<dim>⊥w:<component>`)."""
     base = DirectionSet.load(run.path("directions", "directions.pt"))
     ws = [load_w(run.component(v)) for v in sec["components"]]
     ds = DirectionSet([f"w:{v}" for v in sec["components"]], torch.stack(ws) if ws else torch.empty(0, base.hidden),
                       [{"method": "component", "domain": None, "variant": v} for v in sec["components"]])
+    dims = {d: load_dim(run, d) for d in sec.get("dims") or []}
+    if dims:
+        ds = ds + DirectionSet.from_raw([f"dim_{d}" for d in dims], list(dims.values()),
+                                        [{"method": "dim", "domain": d} for d in dims])
+    res = sec.get("residuals") or []
+    if res:
+        vecs = [decompose.residual(load_dim(run, r["dim"]), load_w(run.component(r["component"])))[0] for r in res]
+        ds = ds + DirectionSet.from_raw([f"dim_{r['dim']}⊥w:{r['component']}" for r in res], vecs,
+                                        [{"method": "residual", "domain": r["dim"], "variant": r["component"]}
+                                         for r in res])
     if sec["base"]:
         ds = ds + base.select(**(sec.get("select") or {}))
     rand = random_directions(base.hidden, sec["n_rand"], seed=sec["rand_seed"])

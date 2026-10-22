@@ -113,8 +113,10 @@ strongreject:
 generate:
   components: [all]
   base: true
-  select: {}                          # все направления этапа 1: 4 DIM и 20 RDO
-  n_rand: 3
+  select: {methods: [dim]}            # 4 доменных DIM; RDO не генерируем — судья для них только на Qwen2.5-3B
+  dims: [union]                       # DIM union — его раскладывает этап 8
+  residuals: [{dim: union, component: all}]   # остаток DIM⊥w, как в этапе 8
+  n_rand: 1
   rand_seed: 0
   alpha: 1.0
   max_new_tokens: 512
@@ -141,5 +143,29 @@ decompose:
   n_rand: 3
   rand_seed: 0
   batch_size: 16
+  n_boot: 1000
+  boot_seed: 0
+
+# Этап 9: полные ответы на harmless_test при вызове отказа — h + s·α0·v̂ на входе слоя DIM на каждом
+# шаге декодирования (α0 = ‖DIM union‖, как в этапе 8). Набор — как в generate; ответы оценивает судья.
+induce:
+  components: [all]
+  base: false
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 1
+  rand_seed: 0
+  scales: [1]
+  max_new_tokens: 256                 # для «отказала или нет» хватает; вдвое дешевле 512
+  batch_size: 32
+
+# Этап 10: кросс-нейтрализация — вызываем отказ DIM (или w) в рабочей точке этапа 8 и вырезаем
+# w / DIM / DIM⊥w / случайное во всех слоях; прокси первого токена на harmless_test.
+cross:
+  component: all
+  dim: union
+  n_rand: 1
+  rand_seed: 0
+  batch_size: 32
   n_boot: 1000
   boot_seed: 0
