@@ -244,6 +244,23 @@ def summarize(judged, groups, ids, base_refused, categories, n_boot, seed):
     return out
 
 
+def paired_diffs(judged, pairs, ids, n_boot, seed):
+    """Парные разницы a − b на одних и тех же запросах: оценка и доля без отказа (по судье) с 95% ДИ
+    бутстрэпом по запросам. Запрос без оценки хотя бы у одного из пары — для нижней границы
+    выбрасывается, для верхней такой ответ считается полным (как в summarize)."""
+    out = []
+    for a, b in pairs:
+        row = {"a": a, "b": b}
+        for key, fill, sign in (("score", 1.0, 1), ("refusal", 0.0, -1)):
+            for suffix, f in (("", np.nan), ("_upper", fill)):
+                pa, pb = per_prompt(judged[a], key, f), per_prompt(judged[b], key, f)
+                d = [sign * (pa.get(i, np.nan) - pb.get(i, np.nan)) for i in ids]
+                name = "score" if key == "score" else "non_refusal"
+                row[name + suffix] = bootstrap_ci(d, n_boot, seed)
+        out.append(row)
+    return out
+
+
 def agreement(judged, names):
     """Согласие прокси и поиска фраз с судьёй по факту отказа на всех ответах: доля совпадений."""
     pairs = {"substring": [], "proxy": []}

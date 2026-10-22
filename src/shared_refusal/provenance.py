@@ -25,7 +25,8 @@ OWN = {"data": ("dataset", "domains", "splits"),
        "judge": ("judge",),
        "decompose": ("decompose",),
        "induce": ("induce",),
-       "cross": ("cross",)}
+       "cross": ("cross",),
+       "judge_induce": ("judge",)}
 UPSTREAM = {"data": (),
             "directions": ("data",),
             "component": ("directions",),
@@ -36,7 +37,8 @@ UPSTREAM = {"data": (),
             "judge": ("generate",),
             "decompose": ("data", "directions", "component"),
             "induce": ("data", "directions", "component"),
-            "cross": ("data", "directions", "component", "decompose")}
+            "cross": ("data", "directions", "component", "decompose"),
+            "judge_induce": ("induce",)}
 
 
 def sections(stage):

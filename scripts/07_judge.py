@@ -91,9 +91,10 @@ def collect(run, names, prompts):
 
 
 def groups_of(names, meta_by_name, domains):
-    """Строки сводки: без вмешательства, компоненты и DIM поштучно, RDO — по доменам, случайные — вместе."""
+    """Строки сводки: без вмешательства, компоненты, DIM и остатки DIM⊥w поштучно, RDO — по доменам,
+    случайные — вместе."""
     g = [("none", ["none"])]
-    g += [(n, [n]) for n in names if meta_by_name[n]["method"] in ("component", "dim")]
+    g += [(n, [n]) for n in names if meta_by_name[n]["method"] in ("component", "dim", "residual")]
     for d in domains:
         rdo = [n for n in names if meta_by_name[n]["method"] == "rdo" and meta_by_name[n]["domain"] == d]
         if rdo:
@@ -105,15 +106,20 @@ def groups_of(names, meta_by_name, domains):
 
 
 def kl_at(run, alpha):
-    """KL на harmless_test из этапа 3 при той же силе аблации (если есть): {направление: KL}.
-    В ablation.json прогона 12.10 единственная компонента названа `w` — для неё заводим и
-    нынешнее имя `w:all` (пересчёт этапа 3 новым кодом записал бы его сам)."""
+    """KL на harmless_test при той же силе аблации: {направление: KL}. Из этапа 3, если он есть;
+    чего там нет (DIM union, остатки; у моделей без этапа 3 — всё) — из этапа 8, где аблация
+    a = 1 на том же harmless_test. В ablation.json прогона 12.10 единственная компонента названа
+    `w` — для неё заводим и нынешнее имя `w:all` (пересчёт этапа 3 новым кодом записал бы его сам)."""
+    kl = {}
     p = run.path("ablation", "ablation.json")
-    if not os.path.exists(p):
-        return {}
-    kl = {r["direction"]: r["kl"] for r in read_json(p)["rows"] if r["alpha"] == alpha}
-    if "w" in kl:
-        kl.setdefault("w:all", kl["w"])
+    if os.path.exists(p):
+        kl = {r["direction"]: r["kl"] for r in read_json(p)["rows"] if r["alpha"] == alpha}
+        if "w" in kl:
+            kl.setdefault("w:all", kl["w"])
+    p = run.path("decompose", "decompose.json")
+    if alpha == 1.0 and os.path.exists(p):
+        for r in read_json(p)["rows"]:
+            kl.setdefault(r["direction"], r["kl"])
     return kl
 
 
@@ -148,10 +154,12 @@ def main():
     for r, (_, members) in zip(rows, groups):
         vals = [kl.get(n, 0.0 if n == "none" else None) for n in members]
         r["kl"] = sum(vals) / len(vals) if None not in vals else None
+    pairs = [p for p in jc.get("pairs", []) if p[0] in judged and p[1] in judged]
+    diffs = strongreject.paired_diffs(judged, pairs, ids, jc["n_boot"], jc["boot_seed"])
     agree = strongreject.agreement(judged, names)
     served = sorted({r.get("judge_model") for rs in judged.values() for r in rs if r.get("judge_model")})
 
-    res = {"n_prompts": len(ids), "n_base_refused": len(base_refused), "rows": rows, "agreement": agree,
+    res = {"n_prompts": len(ids), "n_base_refused": len(base_refused), "rows": rows, "diffs": diffs, "agreement": agree,
            "judge_model": jc["model"], "served_models": served, "missing": missing}
     write_json(res, run.path("strongreject", "strongreject.json"))
     run.write_report("strongreject.md", report.strongreject(cfg["model_alias"], res, m))

@@ -70,3 +70,79 @@ def test_cross_uses_working_scale_from_stage8(staged, monkeypatch):
     assert by[("dim_union", "—")]["mean"] == 1.0 and by[("dim_union", "w:all")]["mean"] == 0.0
     assert res["base"]["mean"] == 0.0
     assert os.path.exists(run.path("reports", "cross.md"))
+
+
+class XJudge:
+    """Судья XSTest-заглушка: «I cannot» — полный отказ, «Sure» — выполнение; ответ на «harmless 2» не разбирается."""
+
+    def __init__(self):
+        from types import SimpleNamespace as NS
+        self.n, self._ns = 0, NS
+        self.chat = NS(completions=NS(create=self.create))
+
+    def create(self, model, messages, temperature, max_tokens):
+        self.n += 1
+        text = messages[1]["content"]
+        cls = "???" if 'QUESTION: "harmless 2"' in text else (
+            "2_full_refusal" if "I cannot" in text else "1_full_compliance")
+        return self._ns(model="gpt-4o-mini-x", choices=[self._ns(message=self._ns(content=cls))])
+
+
+def test_judge_induce_and_summary(staged, monkeypatch):
+    from shared_refusal import strongreject, xstest
+    path, run, calls, _ = staged
+    run_main("09_induce", ["--config", path], monkeypatch)
+    judge = XJudge()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: judge)
+    monkeypatch.setattr(xstest.time, "sleep", lambda s: None)
+    run_main("11_judge_induce", ["--config", path, "--workers", "2"], monkeypatch)
+    res = artifacts.read_json(run.path("induce", "induce.json"))
+    rows = res["rows"]
+    assert rows["none"]["full_refusal"]["mean"] == 0.0
+    assert rows["dim_union_s1"]["full_refusal"]["mean"] == 1.0 and rows["dim_union_s1"]["n_unjudged"] == 1
+    assert rows["dim_union_s1"]["full_refusal"]["n"] == 2                      # неоценённый — вне нижней границы
+    assert rows["none"]["any_refusal_upper"]["mean"] == pytest.approx(1 / 3)   # верхняя — считая его отказом
+    pairs = {(d["a"], d["b"]) for d in res["diffs"]}
+    assert ("dim_union⊥w:all_s1", "none") in pairs and ("w:all_s2", "dim_union_s2") in pairs
+    assert ("rand_0_s1", "none") in pairs
+    assert "XSTest" in open(run.path("reports", "induce.md")).read()
+    n = judge.n
+    run_main("11_judge_induce", ["--config", path], monkeypatch)             # неоценённые досылаются снова
+    assert judge.n == n + 2 * len(rows)                                       # retries = 2 на каждый
+
+    out = run.path("summary.md")
+    run_main("summary_judge", ["--configs", path, "--out", out], monkeypatch)
+    text = open(out).read()
+    assert "## 2. Вызов отказа" in text and "| 1 | 0.333 |" not in text   # none: любой отказ 0 по оценённым
+
+
+def test_xstest_parse():
+    from shared_refusal import xstest
+    assert xstest.parse("2_full_refusal") == "full_refusal"
+    assert xstest.parse("CLASS: 3_partial_refusal.") == "partial_refusal"
+    assert xstest.parse("full_compliance") == "full_compliance"
+    assert xstest.parse("1") == "full_compliance"
+    assert xstest.parse("I'm sorry") is None and xstest.parse(None) is None
+    assert '"{question}"' in xstest.PROMPT and xstest.PROMPT.endswith("CLASS:")
+
+
+def test_paired_diffs_and_kl_fallback(run):
+    from shared_refusal import strongreject
+    judged = {"a": [{"id": 0, "score": 1.0, "refusal": 0.0}, {"id": 1, "score": None, "refusal": None}],
+              "b": [{"id": 0, "score": 0.25, "refusal": 1.0}, {"id": 1, "score": 0.0, "refusal": 1.0}]}
+    d = strongreject.paired_diffs(judged, [("a", "b")], [0, 1], 50, 0)[0]
+    assert d["score"]["mean"] == 0.75 and d["score"]["n"] == 1
+    assert d["score_upper"]["mean"] == pytest.approx((0.75 + 1.0) / 2)
+    assert d["non_refusal"]["mean"] == 1.0
+
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("j07", os.path.join(os.path.dirname(__file__), "..", "scripts", "07_judge.py"))
+    j07 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(j07)
+    artifacts.write_json({"rows": [{"direction": "w:all", "alpha": 1.0, "kl": 0.05}]}, run.path("ablation", "ablation.json"))
+    artifacts.write_json({"rows": [{"direction": "w:all", "kl": 0.9}, {"direction": "dim_union⊥w:all", "kl": 0.07}]},
+                         run.path("decompose", "decompose.json"))
+    assert j07.kl_at(run, 1.0) == {"w:all": 0.05, "dim_union⊥w:all": 0.07}     # этап 3 важнее этапа 8
+    assert j07.kl_at(run, 0.5) == {}
+    meta = {"dim_union": {"method": "dim"}, "dim_union⊥w:all": {"method": "residual"}, "rand_0": {"method": "random"}}
+    assert [g[0] for g in j07.groups_of(list(meta), meta, [])] == ["none", "dim_union", "dim_union⊥w:all", "rand (среднее)"]

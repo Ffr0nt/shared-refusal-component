@@ -100,6 +100,13 @@ def strongreject(alias, res, m):
     lines += ["", "С доверительными интервалами (нижняя граница — только по оценённым ответам):", ""]
     lines += table(["направление", "оценка", "оценка, верхняя граница", "без отказа: судья"],
                    [[r["direction"], ci(r["score"]), ci(r["score_upper"]), ci(r["non_refusal"])] for r in rows])
+    if res.get("diffs"):
+        lines += ["", "Парные разницы на одних и тех же запросах (a − b), 95% ДИ бутстрэпом по запросам; "
+                  "нижняя граница — без запросов, где судья не оценил хотя бы один из двух ответов, верхняя — "
+                  "такие ответы считаются полными. ДИ не накрывает 0 — разница значима.", ""]
+        lines += table(["a", "b", "Δ оценки", "Δ оценки, верхняя", "Δ доли без отказа"],
+                       [[d["a"], d["b"], ci(d["score"]), ci(d["score_upper"]), ci(d["non_refusal"])]
+                        for d in res["diffs"]])
     cats = sorted(rows[0]["by_category"]) if rows else []
     lines += ["", "Средняя оценка по категориям StrongREJECT (диапазон, как выше):", ""]
     lines += table(["направление"] + cats,
@@ -112,6 +119,33 @@ def strongreject(alias, res, m):
     if any(res["missing"].values()):
         lines += ["", "Ответов без оценки судьи: " +
                   ", ".join(f"{n} — {k}" for n, k in res["missing"].items() if k) + "."]
+    return lines
+
+
+def induce(alias, res):
+    ci = lambda c: "—" if c["mean"] is None else f"**{c['mean']:.3f}** [{c['lo']:.3f}, {c['hi']:.3f}]"
+    rng = lambda lo, hi: "—" if lo["mean"] is None else (f"{lo['mean']:.3f}" if abs(hi["mean"] - lo["mean"]) < 5e-4
+                                                        else f"{lo['mean']:.3f}–{hi['mean']:.3f}")
+    meta = res["meta"]
+    order = sorted(res["rows"], key=lambda j: (meta[j]["scale"], ["none", "dim", "component", "residual", "random"]
+                                                .index(meta[j]["method"]) if meta[j]["method"] in
+                                                ("none", "dim", "component", "residual", "random") else 9, j))
+    lines = [f"# Вызов отказа полными ответами — {alias}", "",
+             f"harmless_test {res['n']}; h + s·α0·v̂ на входе слоя {res['point']['layer']} на каждом шаге декодирования, "
+             f"α0 = ‖DIM union‖ = {res['alpha0']:.2f}. Судья — классификатор XSTest, `{res['judge_model']}` "
+             f"(ответила: {', '.join(res['served_models']) or '—'}): полный отказ / частичный / выполнение. "
+             "«Любой отказ» — полный или частичный. 95% ДИ бутстрэпом по запросам; если судья не оценил часть "
+             "ответов (столбец «б/о»), нижняя граница — по оценённым, верхняя — считая их отказом.", ""]
+    lines += table(["задание", "s", "б/о", "полный отказ [95% ДИ]", "любой отказ [95% ДИ]", "любой, диапазон",
+                    "отказ по прокси"],
+                   [[j, f"{meta[j]['scale']:g}", res["rows"][j]["n_unjudged"], ci(res["rows"][j]["full_refusal"]),
+                     ci(res["rows"][j]["any_refusal"]),
+                     rng(res["rows"][j]["any_refusal"], res["rows"][j]["any_refusal_upper"]),
+                     f"{res['rows'][j]['proxy_refusal']:.3f}"] for j in order])
+    if res["diffs"]:
+        lines += ["", "Парные разницы на одних и тех же запросах (a − b); ДИ не накрывает 0 — разница значима.", ""]
+        lines += table(["a", "b", "Δ полного отказа", "Δ любого отказа"],
+                       [[d["a"], d["b"], ci(d["full_refusal"]), ci(d["any_refusal"])] for d in res["diffs"]])
     return lines
 
 
