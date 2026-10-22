@@ -70,13 +70,15 @@ component:
 
 # Этап 3: аблация. Проверяются компоненты перечисленных вариантов (w:<вариант>), при base —
 # все направления этапа 1, и n_rand случайных. Прокси-ASR (refusal_score < 0) на harmful_test,
-# KL на harmless_test.
+# KL на harmless_test. Сетка a частая, чтобы сравнивать направления при одинаковом KL (ASR(KL)).
 ablation:
   components: [all]
   base: true
+  dims: [union]                       # DIM union, как в этапах 6 и 8
+  residuals: [{dim: union, component: all}]   # остаток DIM⊥w
   n_rand: 3
   rand_seed: 0
-  alphas: [0.25, 0.5, 0.75, 1.0]
+  alphas: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
   batch_size: 16
 
 # Этап 5: сходимость общей компоненты по числу векторов (DIM и RDO без различия). Для
