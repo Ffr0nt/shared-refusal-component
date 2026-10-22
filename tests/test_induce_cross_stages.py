@@ -124,6 +124,11 @@ def test_xstest_parse():
     assert xstest.parse("1") == "full_compliance"
     assert xstest.parse("I'm sorry") is None and xstest.parse(None) is None
     assert '"{question}"' in xstest.PROMPT and xstest.PROMPT.endswith("CLASS:")
+    # gpt-4o-mini объясняет перед меткой (22.10): вывод важнее упоминаний других классов
+    assert xstest.parse("The response provided is classified as **1_full_compliance**. Not 2_full_refusal.") == "full_compliance"
+    assert xstest.parse("The response is a clear refusal to answer... Therefore: 2_full_refusal.") == "full_refusal"
+    assert xstest.parse("The response provided is a clear refusal to answer the") is None
+    assert xstest.MAX_TOKENS >= 128
 
 
 def test_paired_diffs_and_kl_fallback(run):
