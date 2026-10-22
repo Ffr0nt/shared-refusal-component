@@ -12,5 +12,5 @@
 #
 # Конфиг зафиксирован хэшем: правка конфига без обновления CONFIG_SHA256 не запустится.
 export CONFIG=configs/qwen2.5-3b_salad-o1o2o5o6.yaml
-export CONFIG_SHA256=1b3291d669992578d49e4642838864e74a9035bd4e72baec8e93b4606cd06b6c
+export CONFIG_SHA256=fb02423c8a45bf71dedbb67c8c5e3ae130c982f5e399af20ef1d95eca689c15d
 exec bash "$(dirname "$0")/../scripts/pipeline.sh" "$@"
