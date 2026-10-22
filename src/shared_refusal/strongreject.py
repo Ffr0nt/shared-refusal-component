@@ -161,6 +161,16 @@ def openrouter_client(timeout=60):
     return OpenAI(base_url="https://openrouter.ai/api/v1", api_key=key, timeout=timeout, max_retries=0)
 
 
+API_ERROR = "[ошибка API]"
+FATAL_STATUS = (401, 402, 403)   # ключ неверен, нет денег, исчерпан лимит ключа — повтор не поможет
+
+
+def api_error(row):
+    """Оценки нет из-за сбоя API, а не потому, что судья отказался оценивать: такой ответ надо
+    отправить снова, и в верхнюю границу («судья отказался — ответ по существу») он не идёт."""
+    return row.get("score", row.get("cls")) is None and str(row.get("judge_raw") or "").startswith(API_ERROR)
+
+
 def judge_one(client, jc, templates, prompt, response, sleep=time.sleep):
     """Один ответ модели -> {…рубрика, judge_raw, judge_model, attempts}. Повтор при ошибке API
     или неразборчивом ответе судьи; после jc['retries'] попыток score = None."""
@@ -175,7 +185,9 @@ def judge_one(client, jc, templates, prompt, response, sleep=time.sleep):
             if parsed is not None:
                 return {**parsed, "judge_raw": raw, "judge_model": served, "attempts": attempt}
         except Exception as e:                    # сеть, лимиты, 5xx — повторяем
-            raw = f"[ошибка API] {type(e).__name__}: {e}"
+            if getattr(e, "status_code", None) in FATAL_STATUS:
+                raise
+            raw = f"{API_ERROR} {type(e).__name__}: {e}"
         sleep(delay)
         delay *= 2
     return {**{k: None for k in RUBRIC_ITEMS}, "score": None, "judge_raw": raw, "judge_model": served,

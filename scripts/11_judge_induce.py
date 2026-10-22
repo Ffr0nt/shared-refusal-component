@@ -77,10 +77,16 @@ def collect(run, jobs):
     for job in jobs:
         judged = {}
         for r in read_jsonl(judge_path(run, job)):
+            if strongreject.api_error(r):
+                continue
             if r.get("cls") is not None or r["id"] not in judged:
                 judged[r["id"]] = r
-        out[job] = {g["id"]: {**judged.get(g["id"], {"cls": None, "full_refusal": None, "any_refusal": None}),
-                              "proxy_refusal": float(g["proxy_score"] > 0)} for g in read_jsonl(gen_path(run, job))}
+        gens = read_jsonl(gen_path(run, job))
+        lost = [g["id"] for g in gens if g["id"] not in judged]
+        if lost:
+            raise RuntimeError(f"{job}: {len(lost)} ответов без оценки из-за сбоя API — запусти этап ещё раз")
+        out[job] = {g["id"]: {**judged[g["id"]],
+                              "proxy_refusal": float(g["proxy_score"] > 0)} for g in gens}
     return out
 
 

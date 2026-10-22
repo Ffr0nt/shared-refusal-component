@@ -45,7 +45,7 @@ def judge_missing(run, names, prompts, cfg, workers, retry_unjudged=False, log=p
     for name in names:
         gens = read_jsonl(run.path("strongreject", "generations", name.replace(":", "_") + ".jsonl"))
         have = {r["id"] for r in read_jsonl(judge_path(run, name))
-                if r.get("score") is not None or not retry_unjudged}
+                if r.get("score") is not None or not (retry_unjudged or strongreject.api_error(r))}
         jobs += [(name, g) for g in gens if g["id"] not in have]
     if not jobs:
         return 0
@@ -82,9 +82,14 @@ def collect(run, names, prompts):
                                                         name.replace(":", "_") + ".jsonl"))}
         judged = {}
         for r in read_jsonl(judge_path(run, name)):
+            if strongreject.api_error(r):
+                continue
             if r.get("score") is not None or r["id"] not in judged:
                 judged[r["id"]] = r
-        out[name] = [{**judged.get(i, {"score": None, "refusal": None}), "id": i,
+        lost = [i for i in gens if i not in judged]
+        if lost:
+            raise RuntimeError(f"{name}: {len(lost)} ответов без оценки из-за сбоя API — запусти этап ещё раз")
+        out[name] = [{**judged[i], "id": i,
                       "substring_refusal": float(strongreject.substring_refusal(g["response"])),
                       "proxy_refusal": float(g["proxy_score"] > 0)} for i, g in gens.items()]
     return out

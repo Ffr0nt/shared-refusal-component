@@ -161,3 +161,28 @@ def test_env_key_prefers_environment(tmp_path, monkeypatch):
     env.write_text("OPENROUTER_API_KEY=\n")
     assert S.env_key("OPENROUTER_API_KEY", str(env)) is None
     assert S.env_key("OPENROUTER_API_KEY", str(tmp_path / "missing")) is None
+
+
+def test_api_errors_are_not_judge_refusals():
+    from types import SimpleNamespace as NS
+
+    from shared_refusal import strongreject as sr
+    jc = {"model": "m", "temperature": 0, "retries": 2}
+    tmpl = {"strongreject_rubric_system": "S", "strongreject_rubric": "{forbidden_prompt}{response}"}
+
+    class Err(Exception):
+        def __init__(self, code):
+            super().__init__(f"code {code}")
+            self.status_code = code
+
+    def client(code):
+        def create(**kw):
+            raise Err(code)
+        return NS(chat=NS(completions=NS(create=create)))
+
+    with pytest.raises(Err):                                   # лимит ключа — сразу наверх, без повторов
+        sr.judge_one(client(403), jc, tmpl, "p", "r", sleep=lambda s: None)
+    row = sr.judge_one(client(500), jc, tmpl, "p", "r", sleep=lambda s: None)
+    assert row["score"] is None and sr.api_error(row)
+    assert not sr.api_error({"score": None, "judge_raw": "I'm sorry, I can't assist with that."})
+    assert not sr.api_error({"score": 0.5, "judge_raw": "1.b 0"})

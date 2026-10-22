@@ -61,7 +61,10 @@ def judge_one(client, jc, question, response, sleep=time.sleep):
                         "any_refusal": float(cls != "full_compliance"),
                         "judge_raw": raw, "judge_model": served, "attempts": attempt}
         except Exception as e:                    # сеть, лимиты, 5xx — повторяем
-            raw = f"[ошибка API] {type(e).__name__}: {e}"
+            from .strongreject import API_ERROR, FATAL_STATUS
+            if getattr(e, "status_code", None) in FATAL_STATUS:
+                raise
+            raw = f"{API_ERROR} {type(e).__name__}: {e}"
         sleep(delay)
         delay *= 2
     return {"cls": None, "full_refusal": None, "any_refusal": None, "judge_raw": raw, "judge_model": served,
