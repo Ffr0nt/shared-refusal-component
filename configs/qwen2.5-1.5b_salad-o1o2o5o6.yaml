@@ -115,7 +115,7 @@ strongreject:
 generate:
   components: [all]
   base: true
-  select: {methods: [dim]}            # 4 доменных DIM; RDO не генерируем — судья для них только на Qwen2.5-3B
+  select: {}                          # все направления этапа 1: 4 DIM и 20 RDO (RDO добавлены 23.10)
   dims: [union]                       # DIM union — его раскладывает этап 8
   residuals: [{dim: union, component: all}]   # остаток DIM⊥w, как в этапе 8
   n_rand: 1
