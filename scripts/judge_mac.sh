@@ -15,6 +15,7 @@ export COPYFILE_DISABLE=1   # tar на macOS иначе кладёт в архи
 cd "$(dirname "$0")/.."
 HOST="${HOST:-peaceful-matsumoto}"
 REMOTE="${REMOTE:-~/f.zakharov/shared-refusal-component}"
+mkdir -p results
 
 if [[ -z "${MODELS:-}" ]]; then
   MODELS=$(ssh "$HOST" "cat $REMOTE/results/piles/*.status 2>/dev/null" | awk '$1 == "ok" {print $2}' | sort -u | tr '\n' ' ')
