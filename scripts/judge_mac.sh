@@ -11,6 +11,7 @@
 # Обратно копируются только оценки и отчёты, без manifest.json: на сервере в это время очередь
 # может писать manifest той же модели. Env: HOST (peaceful-matsumoto), REMOTE (путь к репо там).
 set -euo pipefail
+export COPYFILE_DISABLE=1   # tar на macOS иначе кладёт в архив ._* (AppleDouble)
 cd "$(dirname "$0")/.."
 HOST="${HOST:-peaceful-matsumoto}"
 REMOTE="${REMOTE:-~/f.zakharov/shared-refusal-component}"
