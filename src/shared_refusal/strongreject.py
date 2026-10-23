@@ -199,6 +199,17 @@ def substring_refusal(response):
     return any(s.lower() in low for s in REFUSAL_SUBSTRINGS)
 
 
+def rdo_split(ids, names, seed):
+    """{направление: id запросов} — каждому RDO своя доля 1/len(names): запросы перемешиваются
+    генератором seed и раздаются по кругу в порядке отсортированных имён. Вместе направления
+    покрывают каждый запрос ровно один раз, поэтому среднее по объединению оценивает среднее по
+    ансамблю RDO на полном наборе за цену одного направления (оценок отдельных сидов нет)."""
+    order = list(ids)
+    np.random.default_rng(seed).shuffle(order)
+    names = sorted(names)
+    return {n: sorted(order[k::len(names)]) for k, n in enumerate(names)}
+
+
 # ---------------------------------------------------------------- сводка
 
 def bootstrap_ci(values, n_boot, seed):

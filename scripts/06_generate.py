@@ -6,6 +6,10 @@
 до max_new_tokens токенов при аблации силы alpha во всех слоях, плюс прокси первого шага
 (refusal_score) на тех же ответах.
 
+С generate.rdo_split каждый RDO отвечает только на свою 1/20 запросов (strongreject.rdo_split,
+раздача — в manifest): вместе сиды покрывают набор один раз, и этап 7 оценивает среднее по RDO
+за цену одного направления. Готовый файл с полным набором тоже засчитывается.
+
 Пишет results/<запуск>/strongreject/prompts.json (все запросы с итогом проверки пересечения),
 strongreject/generations/<направление>.jsonl ({id, response, proxy_score}); готовые файлы
 пропускаются.
@@ -26,12 +30,13 @@ def gen_path(run, name):
     return run.path("strongreject", "generations", name.replace(":", "_") + ".jsonl")
 
 
-def done(path, ids):
-    """Файл есть и в нём ровно эти запросы в этом порядке."""
+def done(path, ids, superset=False):
+    """Файл есть и в нём ровно эти запросы в этом порядке (superset — хотя бы эти)."""
     if not os.path.exists(path):
         return False
     with open(path) as f:
-        return [json.loads(line)["id"] for line in f] == ids
+        have = [json.loads(line)["id"] for line in f]
+    return set(ids) <= set(have) if superset else have == ids
 
 
 def answer_hash(cfg):
@@ -80,18 +85,24 @@ def main():
     print(f"StrongREJECT: {len(rows)} запросов, совпадают с train/val: {len(dropped)}, остаётся {len(kept)}")
 
     ds = ablation.directions_to_test(gc, run)
-    todo = [(n, v) for n, v in [(NONE, None)] + list(zip(ds.names, ds.V)) if not done(gen_path(run, n), [r["id"] for r in kept])]
-    print(f"направлений {len(ds) + 1}, уже готово {len(ds) + 1 - len(todo)}")
+    all_ids = [r["id"] for r in kept]
+    rdo = [n for n, mm in zip(ds.names, ds.meta) if mm["method"] == "rdo"]
+    split = strongreject.rdo_split(all_ids, rdo, gc["rdo_split"]["seed"]) if gc.get("rdo_split") and rdo else {}
+    rows_for = lambda n: [r for r in kept if r["id"] in set(split[n])] if n in split else kept
+    todo = [(n, v) for n, v in [(NONE, None)] + list(zip(ds.names, ds.V))
+            if not done(gen_path(run, n), [r["id"] for r in rows_for(n)], superset=n in split)]
+    print(f"направлений {len(ds) + 1}, уже готово {len(ds) + 1 - len(todo)}"
+          + (f"; RDO по 1/{len(split)} запросов ({len(all_ids)} на всех)" if split else ""))
     if todo:
         model, tok = models.load_hf(cfg["model"], cfg["model_revision"])
-        prompts = models.prompts(fam, [r["prompt"] for r in kept])
         for name, v in todo:
-            out = models.generate(model, tok, prompts, v, gc["alpha"], gc["max_new_tokens"], gc["batch_size"],
-                                  fam["refusal_toks"])
+            sub = rows_for(name)
+            out = models.generate(model, tok, models.prompts(fam, [r["prompt"] for r in sub]), v, gc["alpha"],
+                                  gc["max_new_tokens"], gc["batch_size"], fam["refusal_toks"])
             path = gen_path(run, name)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path + ".tmp", "w") as f:
-                for r, (text, score) in zip(kept, out):
+                for r, (text, score) in zip(sub, out):
                     f.write(json.dumps({"id": r["id"], "response": text, "proxy_score": score}, ensure_ascii=False) + "\n")
             os.replace(path + ".tmp", path)
             refused = sum(s > 0 for _, s in out) / len(out)
@@ -103,6 +114,7 @@ def main():
         "directions": [NONE] + ds.names,
         "meta": {NONE: {"method": NONE, "domain": None},
                  **{n: {"method": mm["method"], "domain": mm["domain"]} for n, mm in zip(ds.names, ds.meta)}},
+        "rdo_split": split or None,
         "alpha": gc["alpha"], "max_new_tokens": gc["max_new_tokens"]})
     provenance.record(run, cfg, "generate")
 

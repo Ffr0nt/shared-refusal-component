@@ -114,6 +114,7 @@ generate:
   components: [all]
   base: true
   select: {}                          # все направления этапа 1: 4 DIM и 20 RDO
+  rdo_split: {seed: 0}                # каждому RDO своя 1/20 запросов: вместе — полный набор, судья по среднему RDO
   dims: [union]                       # DIM union — его раскладывает этап 8
   residuals: [{dim: union, component: all}]   # остаток DIM⊥w, как в этапе 8
   n_rand: 3
@@ -134,6 +135,9 @@ judge:
   # Парные разницы оценки на одних и тех же запросах (a − b), 95% ДИ бутстрэпом; пары, которых нет
   # среди ответов, пропускаются. Этап 11 берёт из этой секции модель и бутстрэп, пары строит сам.
   pairs:
+    - [rdo:split, none]               # среднее RDO (по 1/20 запросов на сид) снимает отказ?
+    - [w:all, rdo:split]              # w против среднего RDO
+    - [rdo:split, dim_union]
     - [dim_union⊥w:all, none]         # остаток снимает отказ?
     - [w:all, dim_union]              # w против целого DIM
     - [dim_union, none]

@@ -12,6 +12,9 @@ reports/strongreject.md. Без ключа, если всё уже оценен�
 Сводка: средняя оценка StrongREJECT (0…1) с 95% ДИ — на всех оставленных запросах и только на
 тех, где модель без аблации отказывает (по судье); доля ответов без отказа по судье, по
 поиску фраз и по прокси первого токена; RDO — среднее по сидам домена, случайные — среднее.
+Если этап 6 раздал RDO по 1/20 запросов (manifest strongreject.rdo_split), их ответы складываются в
+одно направление rdo:split — на каждом запросе ответ своего сида; KL у него — среднее по сидам.
+Строки по доменам — только для RDO с ответами на все запросы.
 """
 import argparse
 import json
@@ -95,15 +98,29 @@ def collect(run, names, prompts):
     return out
 
 
-def groups_of(names, meta_by_name, domains):
-    """Строки сводки: без вмешательства, компоненты, DIM и остатки DIM⊥w поштучно, RDO — по доменам,
-    случайные — вместе."""
+SPLIT = "rdo:split"
+
+
+def merge_split(judged, split, ids):
+    """Ответы RDO по их долям запросов -> одно направление rdo:split, по ответу на каждый запрос."""
+    rows = [r for n, part in split.items() for r in judged[n] if r["id"] in set(part)]
+    if sorted(r["id"] for r in rows) != sorted(ids):
+        raise RuntimeError(f"{SPLIT}: доли RDO не покрывают запросы ровно один раз")
+    return rows
+
+
+def groups_of(names, meta_by_name, domains, full=None, split=False):
+    """Строки сводки: без вмешательства, компоненты, DIM и остатки DIM⊥w поштучно, RDO — по доменам
+    (только с ответами на все запросы: full) и rdo:split, случайные — вместе."""
     g = [("none", ["none"])]
     g += [(n, [n]) for n in names if meta_by_name[n]["method"] in ("component", "dim", "residual")]
     for d in domains:
-        rdo = [n for n in names if meta_by_name[n]["method"] == "rdo" and meta_by_name[n]["domain"] == d]
+        rdo = [n for n in names if meta_by_name[n]["method"] == "rdo" and meta_by_name[n]["domain"] == d
+               and (full is None or n in full)]
         if rdo:
             g.append((f"rdo_{d} ({len(rdo)} сидов)", rdo))
+    if split:
+        g.append((SPLIT, [SPLIT]))
     rand = [n for n in names if meta_by_name[n]["method"] == "random"]
     if rand:
         g.append(("rand (среднее)", rand))
@@ -150,12 +167,18 @@ def main():
     if any(missing.values()):
         print("без оценки после всех попыток: " + ", ".join(f"{n}: {k}" for n, k in missing.items() if k))
 
-    groups = groups_of(names[1:], m["meta"], list(cfg["domains"]))
     ids = sorted(r["id"] for r in judged["none"])
+    split = m.get("rdo_split") or {}
+    if split:
+        judged[SPLIT] = merge_split(judged, split, ids)
+    full = {n for n in names if len(judged[n]) == len(ids)}
+    groups = groups_of(names[1:], m["meta"], list(cfg["domains"]), full, bool(split))
     base_refused = [r["id"] for r in judged["none"] if r.get("refusal") == 1.0]
     categories = {i: prompts[i]["category"] for i in ids}
     rows = strongreject.summarize(judged, groups, ids, base_refused, categories, jc["n_boot"], jc["boot_seed"])
     kl = kl_at(run, m["alpha"])
+    if split and all(n in kl for n in split):
+        kl[SPLIT] = sum(kl[n] for n in split) / len(split)
     for r, (_, members) in zip(rows, groups):
         vals = [kl.get(n, 0.0 if n == "none" else None) for n in members]
         r["kl"] = sum(vals) / len(vals) if None not in vals else None

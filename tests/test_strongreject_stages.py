@@ -191,3 +191,50 @@ def test_judge_does_not_resend_unjudged_without_flag(setup, monkeypatch):
     assert refuser.n == 0                                   # кэш отказов — денег не тратим
     run_main("07_judge", ["--config", cfg_path, "--workers", "2", "--retry-unjudged"], monkeypatch)
     assert refuser.n == 2 * 2 * n_dirs
+
+
+def test_rdo_split_generates_shares_and_merges(setup, monkeypatch):
+    """rdo_split: каждый RDO отвечает на свою долю запросов, этап 7 складывает их в rdo:split."""
+    cfg_path, run, calls = setup
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["generate"]["rdo_split"] = {"seed": 0}
+    cfg["judge"]["pairs"] = [["rdo:split", "none"], ["w:all", "rdo:split"]]
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    artifacts.write_json({"rows": [{"direction": "rdo_A_s01", "alpha": 1.0, "kl": 0.02},
+                                   {"direction": "rdo_A_s02", "alpha": 1.0, "kl": 0.04}]},
+                         run.path("ablation", "ablation.json"))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    split = run.manifest()["strongreject"]["rdo_split"]
+    assert sorted(split) == ["rdo_A_s01", "rdo_A_s02"]
+    assert sorted(i for part in split.values() for i in part) == [0, 2]      # запрос 1 выброшен как пересечение
+    for n, part in split.items():
+        ids = [int(l.split(",")[0].split(":")[1]) for l in open(run.path("strongreject", "generations", n + ".jsonl"))]
+        assert ids == part
+
+    judge = Judge()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: judge)
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    res = artifacts.read_json(run.path("strongreject", "strongreject.json"))
+    by = {r["direction"]: r for r in res["rows"]}
+    assert "rdo_A (2 сидов)" not in by                                   # у сидов только доли запросов
+    assert by["rdo:split"]["score"]["n"] == 2 and by["rdo:split"]["score"]["mean"] == pytest.approx(7 / 8)
+    assert by["rdo:split"]["kl"] == pytest.approx(0.03)
+    assert [(d["a"], d["b"]) for d in res["diffs"]] == [("rdo:split", "none"), ("w:all", "rdo:split")]
+
+
+def test_rdo_split_accepts_full_answers(setup, monkeypatch):
+    """Готовые ответы RDO на все запросы засчитываются: rdo_split их не перегенерирует."""
+    cfg_path, run, calls = setup
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    calls.clear()
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["generate"]["rdo_split"] = {"seed": 0}
+    open(cfg_path, "w").write(yaml.safe_dump(cfg))
+    run_main("06_generate", ["--config", cfg_path], monkeypatch)
+    assert calls == [] and run.manifest()["strongreject"]["rdo_split"]
+
+    judge = Judge()
+    monkeypatch.setattr(strongreject, "openrouter_client", lambda timeout=None: judge)
+    run_main("07_judge", ["--config", cfg_path, "--workers", "2"], monkeypatch)
+    by = {r["direction"]: r for r in artifacts.read_json(run.path("strongreject", "strongreject.json"))["rows"]}
+    assert "rdo_A (2 сидов)" in by and by["rdo:split"]["score"]["n"] == 2
