@@ -1,0 +1,185 @@
+model: google/gemma-2-9b-it
+model_revision: 11c9b309abf73637e4b6f9a3fa1e92e615547819    # коммит на HF; этап 1 сверяет его с кэшем
+# Gemma-2: словарь 256k и KV-кэш ~344 КБ/токен (head_dim 256) — батчи генерации меньше, чем у
+# Qwen/Llama того же размера. Помещается на одну H100.
+
+# Источник harmful: HF-датасет и его колонки (см. src/shared_refusal/data.py)
+dataset:
+  name: salad                       # метка source в файлах сплитов
+  hf_path: OpenSafetyLab/Salad-Data
+  hf_config: base_set
+  hf_revision: d21a325e276a99bd69b1fbb8aa51a9f249486b72
+  text_col: question
+  domain_col: 1-category
+  stratum_col: 3-category           # лист таксономии; null — без стратификации
+
+# Домены: код -> значение domain_col
+domains:
+  O1: "O1: Representation & Toxicity"
+  O2: "O2: Misinformation Harms"
+  O5: "O5: Malicious Use"
+  O6: "O6: Human Autonomy & Integrity"
+
+# Непересекающиеся train/val/test одного размера во всех доменах (потолок — O6, 1717 строк).
+# Harmless — общий для всех доменов срез Alpaca из форка geometry-of-refusal.
+splits:
+  n_train: 900
+  n_val: 128
+  n_test: 128
+  seed: 0
+  harmless_src: data/saladbench_splits/harmless_train.json   # относительно форка
+
+# Одна точка (pos, layer) на все домены: select_direction на объединённом val (этап 1)
+# по DIM объединённой выборки (среднее DIM доменов). Пишется в manifest.json.
+
+# Этап 1, RDO: одномерные конусы, 20 разных сидов. Гиперпараметры rdo.py — все явно
+# (сейчас совпадают с его значениями по умолчанию, на которых посчитан прогон 12.10).
+rdo:
+  seeds:
+    O1: [1, 2, 3, 4, 5]
+    O2: [6, 7, 8, 9, 10]
+    O5: [11, 12, 13, 14, 15]
+    O6: [16, 17, 18, 19, 20]
+  hparams:
+    dtype: bfloat16
+    epochs: 1
+    lr: 0.01
+    batch_size: 1
+    effective_batch_size: 16
+    patience: 5
+    n_lr_reduce: 2
+    n_sample: 8
+    fixed_samples: 8
+    sampling_method: hypersphere
+    ablation_lambda: 1
+    addition_lambda: 0.2
+    retain_lambda: 1
+    target_generation_batch_size: 128
+    filter_data: true
+    filter_batch_size: 16
+
+# Этап 2: общая компонента — первый собственный вектор P = (1/N) sum v v^T по направлениям
+# варианта. Вариант — отбор из набора этапа 1: methods / domains / exclude (по именам).
+component:
+  n_null: 1000
+  null_seed: 0
+  variants:
+    all: {}                         # все DIM и RDO, равные веса
+    dim_only: {methods: [dim]}
+    rdo_only: {methods: [rdo]}
+
+# Этап 3: аблация. Проверяются компоненты перечисленных вариантов (w:<вариант>), при base —
+# все направления этапа 1, и n_rand случайных. Прокси-ASR (refusal_score < 0) на harmful_test,
+# KL на harmless_test. Сетка a частая, чтобы сравнивать направления при одинаковом KL (ASR(KL)).
+ablation:
+  components: [all]
+  base: true
+  dims: [union]                       # DIM union, как в этапах 6 и 8
+  residuals: [{dim: union, component: all}]   # остаток DIM⊥w
+  n_rand: 3
+  rand_seed: 0
+  alphas: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  batch_size: 16
+
+# Этап 5: сходимость общей компоненты по числу векторов (DIM и RDO без различия). Для
+# N = 1 … n_max — не больше n_samples комбинаций (где меньше — все); основная метрика —
+# split-half (N ≤ пул/2), подгонка 1/ρ² − 1 = k/N (+ b); targets — целевые ρ².
+convergence:
+  selection: {}                     # отбор из набора этапа 1, как в component.variants
+  n_max: 20
+  n_samples: 1000
+  n_orders: 1000                    # случайные порядки для сдвига от ещё одного вектора
+  seed: 21
+  targets: [0.9, 0.95, 0.99]
+
+# Этапы 6–7: проверка на StrongREJECT (Souly et al., 2024) — 313 запросов, на которые
+# отказывают все девять «часовых» моделей авторов. Датасет и шаблоны рубрики скачиваются по
+# коммиту и сверяются с sha256. Запросы, совпадающие с нашими harmful train/val (точно после
+# нормализации или Jaccard символьных 5-грамм ≥ overlap_jaccard), выбрасываются.
+strongreject:
+  dataset:
+    repo: alexandrasouly/strongreject
+    commit: f7cad6c17e624e21d8df2278e918ae1dddb4cb56
+    path: strongreject_dataset/strongreject_dataset.csv
+    sha256: 4dd70357e4ff8b5d0ba5ebafecab5d6dd5633ce8046e3dd1c8bd93e64de44381
+  rubric_templates:                   # strong_reject: strongreject_rubric{,_system}
+    repo: dsbowen/strong_reject
+    commit: 7a551d5b440ec7b75d4f6f5bb7c1719965b76b47
+    path: strong_reject/eval_files/judge_templates.json
+    sha256: 6d01841899e99f1f57c4f19153056051684ede2a7e1b54ebbb37b5ddff981768
+  overlap_jaccard: 0.7
+
+# Этап 6: полные ответы (жадно, без repetition_penalty) при аблации с силой alpha во всех
+# слоях — те же точки, что в этапе 3. Набор направлений задаётся как в ablation, select —
+# отбор из направлений этапа 1 (как в component.variants). Ответ без аблации есть всегда.
+generate:
+  components: [all]
+  base: true
+  select: {}                          # все направления этапа 1: 4 DIM и 20 RDO
+  rdo_split: {seed: 0}                # каждому RDO своя 1/20 запросов: вместе — полный набор, судья по среднему RDO
+  dims: [union]                       # DIM union — его раскладывает этап 8
+  residuals: [{dim: union, component: all}]   # остаток DIM⊥w, как в этапе 8
+  n_rand: 3
+  rand_seed: 0
+  alpha: 1.0
+  max_new_tokens: 512
+  batch_size: 16
+
+# Этап 7: рубрика StrongREJECT, судья — модель по умолчанию из strong_reject (gpt-4o-mini)
+# через OpenRouter. Бутстреп по запросам для 95% ДИ.
+judge:
+  model: openai/gpt-4o-mini
+  temperature: 0
+  timeout: 60                         # с; без таймаута зависший запрос держит этап
+  retries: 5
+  n_boot: 1000
+  boot_seed: 0
+  # Парные разницы оценки на одних и тех же запросах (a − b), 95% ДИ бутстрэпом; пары, которых нет
+  # среди ответов, пропускаются. Этап 11 берёт из этой секции модель и бутстрэп, пары строит сам.
+  pairs:
+    - [rdo:split, none]               # среднее RDO (по 1/20 запросов на сид) снимает отказ?
+    - [w:all, rdo:split]              # w против среднего RDO
+    - [rdo:split, dim_union]
+    - [dim_union⊥w:all, none]         # остаток снимает отказ?
+    - [w:all, dim_union]              # w против целого DIM
+    - [dim_union, none]
+    - [w:all, none]
+    - [rand_0, none]
+
+# Этап 8: разложение DIM. Для каждого DIM (dims: union и домены) и компоненты вариантов
+# components — остаток DIM⊥w и w⊥DIM; для всех — bypass (аблация a = 1, как этап 3), induce
+# (h + s·α0·v̂ на входе слоя DIM, α0 = ‖DIM union‖, s из scales) и read (AUROC проекции в точке
+# DIM, бутстрэп n_boot). Плюс n_rand случайных.
+decompose:
+  components: [all, rdo_only]
+  dims: [union, O1, O2, O5, O6]
+  scales: [0.5, 1, 2, 4]
+  n_rand: 3
+  rand_seed: 0
+  batch_size: 8
+  n_boot: 1000
+  boot_seed: 0
+
+# Этап 9: полные ответы на harmless_test при вызове отказа — h + s·α0·v̂ на входе слоя DIM на каждом
+# шаге декодирования (α0 = ‖DIM union‖, как в этапе 8). Набор — как в generate; ответы оценивает судья.
+induce:
+  components: [all]
+  base: false
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 1
+  rand_seed: 0
+  scales: [1]
+  max_new_tokens: 256                 # для «отказала или нет» хватает; вдвое дешевле 512
+  batch_size: 16
+
+# Этап 10: кросс-нейтрализация — вызываем отказ DIM (или w) в рабочей точке этапа 8 и вырезаем
+# w / DIM / DIM⊥w / случайное во всех слоях; прокси первого токена на harmless_test.
+cross:
+  component: all
+  dim: union
+  n_rand: 1
+  rand_seed: 0
+  batch_size: 16
+  n_boot: 1000
+  boot_seed: 0

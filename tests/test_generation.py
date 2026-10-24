@@ -77,6 +77,7 @@ def test_partial_ablation_keeps_fraction(tiny, v):
 class Tok:
     """Токенизатор-заглушка: промпт — строка из цифр через пробел, паддинг слева нулями."""
     pad_token_id = 0
+    bos_token = None          # как у Qwen
 
     def __call__(self, texts, return_tensors, padding, add_special_tokens):
         seqs = [[int(t) for t in s.split()] for s in texts]
@@ -140,3 +141,15 @@ def test_generate_with_addition_and_first_token_only(tiny, v):
                            add=(v, 5.0, 1))
     assert [s for _, s in both] != [s for _, s in added]     # вырезание v во всех слоях гасит прибавку дальше
     assert not tiny.model.layers[1]._forward_pre_hooks
+
+
+def test_needs_bos_by_family():
+    class T:
+        def __init__(self, bos):
+            self.bos_token = bos
+    gemma = models.FAMILIES["gemma"]["template"].format(instruction="x")
+    llama = models.FAMILIES["llama-3"]["template"].format(instruction="x")
+    qwen = models.FAMILIES["qwen2.5"]["template"].format(instruction="x")
+    assert models.needs_bos(T("<bos>"), [gemma])                  # Gemma: BOS от токенизатора
+    assert not models.needs_bos(T("<|begin_of_text|>"), [llama])  # Llama: BOS уже в шаблоне
+    assert not models.needs_bos(T(None), [qwen])                  # Qwen: BOS нет

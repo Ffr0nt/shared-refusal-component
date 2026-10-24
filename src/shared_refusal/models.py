@@ -225,6 +225,14 @@ class _FirstStepLogits:
         return scores
 
 
+def needs_bos(tok, prompts):
+    """Добавлять ли BOS токенизатором: у Llama он уже в шаблоне, у Qwen его нет, а Gemma без
+    <bos> в шаблоне ждёт его от токенизатора — как при токенизации по умолчанию в nnsight-этапах
+    и в форке."""
+    bos = tok.bos_token
+    return bool(bos) and not prompts[0].startswith(bos)
+
+
 @torch.no_grad()
 def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks, add=None):
     """Жадные ответы на готовые (с шаблоном) промпты при аблации v силы a и, если задано
@@ -233,10 +241,11 @@ def generate(model, tok, prompts, v, a, max_new_tokens, batch_size, refusal_toks
     при max_new_tokens = 1 это просто прокси первого токена."""
     from transformers import LogitsProcessorList
 
+    special = needs_bos(tok, prompts)
     out = []
     for i in range(0, len(prompts), batch_size):
         enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True,
-                  add_special_tokens=False).to(next(model.parameters()).device)
+                  add_special_tokens=special).to(next(model.parameters()).device)
         first = _FirstStepLogits()
         with ablation_hooks(model, v, a), addition_hooks(model, *(add or (None, 0, 0))):
             seqs = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False, temperature=None,
