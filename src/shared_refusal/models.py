@@ -143,6 +143,18 @@ def load_hf(model_name, revision):
     return model, tok
 
 
+def _per_device(v, dtype):
+    """Копии v по устройствам: при device_map="auto" на нескольких картах слои стоят на разных
+    устройствах, и хук берёт вектор на устройстве своей активации."""
+    cache = {}
+
+    def get(device):
+        if device not in cache:
+            cache[device] = v.to(device=device, dtype=dtype)
+        return cache[device]
+    return get
+
+
 @contextlib.contextmanager
 def ablation_hooks(model, v, a):
     """Пока открыт контекст, во всех слоях HF-модели h <- h - a (h·v) v на входе блока,
@@ -150,11 +162,11 @@ def ablation_hooks(model, v, a):
     if v is None or a == 0:
         yield
         return
-    p = next(model.parameters())
-    v = (v / v.norm()).to(device=p.device, dtype=p.dtype)
+    v = _per_device(v / v.norm(), next(model.parameters()).dtype)
 
     def cut(t):
-        return t - a * (t @ v)[..., None] * v
+        u = v(t.device)
+        return t - a * (t @ u)[..., None] * u
 
     def pre(mod, args, kwargs):
         if args:
@@ -185,13 +197,13 @@ def addition_hooks(model, v, coeff, layer):
     if v is None or coeff == 0:
         yield
         return
-    p = next(model.parameters())
-    add = coeff * (v / v.norm()).to(device=p.device, dtype=p.dtype)
+    add = _per_device(coeff * (v / v.norm()), next(model.parameters()).dtype)
 
     def pre(mod, args, kwargs):
         if args:
-            return (args[0] + add,) + tuple(args[1:]), kwargs
-        return args, {**kwargs, "hidden_states": kwargs["hidden_states"] + add}
+            return (args[0] + add(args[0].device),) + tuple(args[1:]), kwargs
+        h = kwargs["hidden_states"]
+        return args, {**kwargs, "hidden_states": h + add(h.device)}
 
     h = layers(model)[layer].register_forward_pre_hook(pre, with_kwargs=True)
     try:
