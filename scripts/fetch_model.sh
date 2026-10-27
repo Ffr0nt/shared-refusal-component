@@ -12,6 +12,9 @@ cd "$(dirname "$0")/.."
 
 CONFIG="${1:?укажи configs/<имя>.yaml}"
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
+# Свой HF-токен для gated-моделей (Gemma) — из файла в рабочей папке, а не общий ~/.cache/huggingface/token
+HF_TOKEN_FILE="${HF_TOKEN_FILE:-$HOME/f.zakharov/.hf_token}"
+if [[ -z "${HF_TOKEN:-}" && -f "$HF_TOKEN_FILE" ]]; then export HF_TOKEN="$(<"$HF_TOKEN_FILE")"; fi
 export HUGGINGFACE_CACHE_DIR="${HUGGINGFACE_CACHE_DIR:-$HF_HOME/hub}"
 df -h "$HUGGINGFACE_CACHE_DIR" | tail -1
 

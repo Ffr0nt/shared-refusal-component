@@ -14,6 +14,7 @@
 #   GPU            индекс карты или список через запятую (GPU=0,1 — модель делится между
 #                  картами), обязателен, если среди STEPS есть GPU-этап (01, 03, 06, 08, 09, 10);
 #   FORK, HF_HOME  пути к форку и HF-кэшу.
+#   HF_TOKEN       если не задан — берётся из HF_TOKEN_FILE (~/f.zakharov/.hf_token), если он есть.
 # Ни одна из переменных, кроме CONFIG, на числа не влияет.
 set -euo pipefail
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
@@ -43,6 +44,9 @@ for STEP in "${STEP_LIST[@]}"; do
 done
 
 export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
+# Свой HF-токен для gated-моделей (Gemma) — из файла в рабочей папке, а не общий ~/.cache/huggingface/token
+HF_TOKEN_FILE="${HF_TOKEN_FILE:-$HOME/f.zakharov/.hf_token}"
+if [[ -z "${HF_TOKEN:-}" && -f "$HF_TOKEN_FILE" ]]; then export HF_TOKEN="$(<"$HF_TOKEN_FILE")"; fi
 export HUGGINGFACE_CACHE_DIR="${HUGGINGFACE_CACHE_DIR:-$HF_HOME/hub}"
 export WANDB_MODE="${WANDB_MODE:-disabled}"
 if [[ -n "${GPU:-}" ]]; then export CUDA_VISIBLE_DEVICES="$GPU"; else export CUDA_VISIBLE_DEVICES=""; fi
