@@ -78,10 +78,10 @@ component:
 
 # Этап 3: аблация. Прокси-ASR на harmful_test, KL на harmless_test.
 ablation:
-  components: [all]
+  components: [all, rdo_only]         # rdo_only — компонента без DIM: главный замер контроля
   base: true
   dims: [union]
-  residuals: [{dim: union, component: all}]
+  residuals: [{dim: union, component: all}, {dim: union, component: rdo_only}]
   n_rand: 3
   rand_seed: 0
   alphas: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -112,12 +112,12 @@ strongreject:
 
 # Этап 6: полные ответы при аблации силы alpha во всех слоях.
 generate:
-  components: [all]
+  components: [all, rdo_only]         # судья оценивает и компоненту без DIM
   base: true
   select: {}
   rdo_split: {seed: 0}              # каждому RDO своя 1/20 запросов: судья по среднему RDO
   dims: [union]
-  residuals: [{dim: union, component: all}]
+  residuals: [{dim: union, component: all}, {dim: union, component: rdo_only}]
   n_rand: 3
   rand_seed: 0
   alpha: 1.0
@@ -139,6 +139,9 @@ judge:
     - [w:all, dim_union]
     - [dim_union, none]
     - [w:all, none]
+    - [w:rdo_only, none]            # компонента без DIM снимает отказ?
+    - [w:rdo_only, w:all]           # хуже ли она компоненты с DIM
+    - [dim_union⊥w:rdo_only, none]  # остаток DIM вне RDO-компоненты снимает отказ?
     - [rand_0, none]
 
 # Этап 8: разложение DIM на компоненту и остаток.
