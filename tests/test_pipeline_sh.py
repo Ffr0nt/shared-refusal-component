@@ -58,3 +58,13 @@ def test_launch_files_pin_their_config():
         sha = text.split("CONFIG_SHA256=")[1].split()[0]
         with open(os.path.join(REPO, "configs", f"{name}.yaml"), "rb") as c:
             assert hashlib.sha256(c.read()).hexdigest() == sha, f"{f}: хэш не совпадает с конфигом"
+
+
+WAIT_AND_LAUNCH = os.path.join(REPO, "scripts", "wait_and_launch.sh")
+
+
+def test_wait_and_launch_requires_launch_file(tmp_path):
+    r = subprocess.run(["bash", WAIT_AND_LAUNCH], capture_output=True, text=True)
+    assert r.returncode != 0 and "launch/" in r.stderr
+    r = subprocess.run(["bash", WAIT_AND_LAUNCH, str(tmp_path / "нет.sh")], capture_output=True, text=True)
+    assert r.returncode != 0 and "нет launch-файла" in r.stderr
