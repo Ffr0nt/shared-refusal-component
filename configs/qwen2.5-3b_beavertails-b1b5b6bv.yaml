@@ -1,0 +1,153 @@
+# Контроль целей RDO: цели берутся готовыми из BeaverTails, DIM в них не участвует.
+# Постановка — concept_dim/experiments/natural_targets/idea.md.
+model: Qwen/Qwen2.5-3B-Instruct
+model_revision: aa8e72537993ba99e69dfaafa59ed015b17504d1    # коммит на HF; этап 1 сверяет его с кэшем
+
+# Источник harmful: пары «вредный запрос — вредный ответ» с человеческой разметкой.
+# Берутся только строки is_safe = False: ответ по существу, отказа в нём нет.
+dataset:
+  name: beavertails
+  kind: paired                      # к запросу приложен ответ; метки многозначные (data.py)
+  hf_path: PKU-Alignment/BeaverTails
+  hf_revision: 8401fe609d288129cc684a9b3be6a93e41cfe678
+  path: round0/330k/train.jsonl.xz
+  text_col: prompt
+  response_col: response
+  safe_col: is_safe
+  category_col: category
+  min_target_words: 12              # короче — на 30 токенов цели не хватит; берём самый длинный
+
+# Домены: код -> категории BeaverTails. ПОРЯДОК ЗДЕСЬ — ПРИОРИТЕТ: у запроса обычно 2–4 метки,
+# и он уходит в первый домен, чья метка у него есть. Редкие категории стоят раньше частых,
+# иначе violence забрала бы почти всё. Домены непересекающиеся, но не «чистые» по меткам.
+# Соответствие доменам SALAD базового прогона: B1 ~ O1, B5 ~ O5, B6 ~ O6, BV — своё.
+domains:
+  B6: ["privacy_violation"]
+  B5: ["terrorism,organized_crime", "drug_abuse,weapons,banned_substance", "financial_crime,property_crime,theft"]
+  B1: ["hate_speech,offensive_language", "discrimination,stereotype,injustice"]
+  BV: ["violence,aiding_and_abetting,incitement"]
+
+# Непересекающиеся train/val/test одного размера во всех доменах (потолок — BV, 1523 запроса).
+# Harmless — тот же срез Alpaca из форка, что в прогонах на SALAD.
+splits:
+  n_train: 900
+  n_val: 128
+  n_test: 128
+  seed: 0
+  harmless_src: data/saladbench_splits/harmless_train.json   # относительно форка
+
+# Этап 1, RDO: одномерные конусы, 20 сидов (номера те же, что в базовом прогоне на SALAD, —
+# значит, те же стартовые векторы). Лосс без слагаемого наведения отказа: L_abl + L_ret.
+rdo:
+  targets:
+    source: dataset                 # цели не генерировать через DIM, а взять из данных
+    n_tokens: 30                    # столько же, сколько num_target_tokens в rdo.py
+    batch_size: 32                  # только на генерацию retain
+  seeds:
+    B6: [1, 2, 3, 4, 5]
+    B5: [6, 7, 8, 9, 10]
+    B1: [11, 12, 13, 14, 15]
+    BV: [16, 17, 18, 19, 20]
+  hparams:
+    dtype: bfloat16
+    epochs: 1
+    lr: 0.01
+    batch_size: 1
+    effective_batch_size: 16
+    patience: 5
+    n_lr_reduce: 2
+    n_sample: 8
+    fixed_samples: 8
+    sampling_method: hypersphere
+    ablation_lambda: 1
+    addition_lambda: 0              # цель наведения отказа пустая — слагаемое выключено
+    retain_lambda: 1
+    target_generation_batch_size: 512
+    filter_data: true
+    filter_batch_size: 32
+
+# Этап 2: общая компонента — первый собственный вектор P = (1/N) sum v v^T по направлениям
+# варианта.
+component:
+  n_null: 1000
+  null_seed: 0
+  variants:
+    all: {}                         # все DIM и RDO, равные веса
+    dim_only: {methods: [dim]}
+    rdo_only: {methods: [rdo]}
+
+# Этап 3: аблация. Прокси-ASR на harmful_test, KL на harmless_test.
+ablation:
+  components: [all]
+  base: true
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 3
+  rand_seed: 0
+  alphas: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+  batch_size: 16
+
+# Этап 5: сходимость общей компоненты по числу векторов.
+convergence:
+  selection: {}
+  n_max: 20
+  n_samples: 1000
+  n_orders: 1000
+  seed: 21
+  targets: [0.9, 0.95, 0.99]
+
+# Этапы 6–7: StrongREJECT. Запросы, совпадающие с нашими harmful train/val, выбрасываются.
+strongreject:
+  dataset:
+    repo: alexandrasouly/strongreject
+    commit: f7cad6c17e624e21d8df2278e918ae1dddb4cb56
+    path: strongreject_dataset/strongreject_dataset.csv
+    sha256: 4dd70357e4ff8b5d0ba5ebafecab5d6dd5633ce8046e3dd1c8bd93e64de44381
+  rubric_templates:
+    repo: dsbowen/strong_reject
+    commit: 7a551d5b440ec7b75d4f6f5bb7c1719965b76b47
+    path: strong_reject/eval_files/judge_templates.json
+    sha256: 6d01841899e99f1f57c4f19153056051684ede2a7e1b54ebbb37b5ddff981768
+  overlap_jaccard: 0.7
+
+# Этап 6: полные ответы при аблации силы alpha во всех слоях.
+generate:
+  components: [all]
+  base: true
+  select: {}
+  rdo_split: {seed: 0}              # каждому RDO своя 1/20 запросов: судья по среднему RDO
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 3
+  rand_seed: 0
+  alpha: 1.0
+  max_new_tokens: 512
+  batch_size: 32
+
+# Этап 7: рубрика StrongREJECT, судья gpt-4o-mini через OpenRouter.
+judge:
+  model: openai/gpt-4o-mini
+  temperature: 0
+  timeout: 60
+  retries: 5
+  n_boot: 1000
+  boot_seed: 0
+  pairs:
+    - [rdo:split, none]             # среднее RDO на естественных целях снимает отказ?
+    - [w:all, rdo:split]
+    - [rdo:split, dim_union]
+    - [w:all, dim_union]
+    - [dim_union, none]
+    - [w:all, none]
+    - [rand_0, none]
+
+# Этап 8: разложение DIM на компоненту и остаток.
+decompose:
+  components: [all, rdo_only]
+  dims: [union, B1, B5, B6, BV]
+  scales: [0.5, 1, 2, 4]
+  n_rand: 3
+  rand_seed: 0
+  batch_size: 16
+  n_boot: 1000
+  boot_seed: 0

@@ -1,11 +1,14 @@
 """Этап 0 — данные: сплиты по доменам (CPU).
 
-Для каждого домена (источник и колонки — секция dataset конфига; сейчас SALAD-Bench
-base_set, домен — 1-category) — непересекающиеся harmful_{train,val,test}.json одного
-размера во всех доменах; выборка стратифицирована по stratum_col (лист таксономии,
-3-category). Вопросы, встречающиеся в нескольких доменах или повторно,
-выброшены. Harmless — общий для всех доменов срез Alpaca, тоже непересекающийся по сплитам;
-он копируется в каталог каждого домена (так их читают DIM-пайплайн и rdo.py).
+Для каждого домена (источник, вид и колонки — секция dataset конфига: SALAD-Bench с одной
+меткой домена или BeaverTails с готовыми ответами, см. data.py) — непересекающиеся
+harmful_{train,val,test}.json одного размера во всех доменах; выборка стратифицирована по
+страте (лист таксономии у SALAD, категория внутри домена у BeaverTails). Harmless — общий для
+всех доменов срез Alpaca, тоже непересекающийся по сплитам; он копируется в каталог каждого
+домена (так их читают DIM-пайплайн и rdo.py).
+
+Если у источника есть готовые ответы (dataset.kind: paired), ответ запроса пишется в поле
+target: из него этап 1 делает цель обучения RDO, в которой нет DIM.
 
 Пишет results/<model>/splits/<domain>/{harmful,harmless}_{train,val,test}.json
 и sha256 каждого файла в manifest.json.
@@ -37,18 +40,20 @@ def main():
     harmless_splits = {s: [{"instruction": q, "source": "alpaca"} for q in part["instruction"]]
                        for s, part in cut(harmless, sizes).items()}
 
-    df = load_harmful(dc, list(cfg["domains"].values()))
+    df = load_harmful(dc, cfg["domains"])
+    has_target = "target" in df.columns
 
     manifest = {"sizes": sizes, "seed": sc["seed"], "harmless_src": sc["harmless_src"],
                 "pool": {}, "sha256": {}}
-    for d, label in cfg["domains"].items():
-        pool = df[df["domain"] == label]
+    for d in cfg["domains"]:
+        pool = df[df["domain"] == d]
         assert len(pool) >= total, f"{d}: пул {len(pool)} < {total}"
         sample = stratified_sample(pool, total, "stratum", sc["seed"])
         out = run.splits(d)
         for s, part in cut(sample, sizes).items():
-            rows = [{"instruction": q, "source": f"{dc['name']}:{d}", "category": c}
-                    for q, c in zip(part["text"], part["stratum"])]
+            rows = [{"instruction": r.text, "source": f"{dc['name']}:{d}", "category": r.stratum,
+                     **({"target": r.target} if has_target else {})}
+                    for r in part.itertuples(index=False)]
             for harmtype, data in (("harmful", rows), ("harmless", harmless_splits[s])):
                 p = os.path.join(out, f"{harmtype}_{s}.json")
                 write_json(data, p)
