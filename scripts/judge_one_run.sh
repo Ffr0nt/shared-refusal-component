@@ -28,7 +28,14 @@ echo "################ судья ($STEPS) — $(date '+%F %T') ################
 CONFIG="$CONFIG" STEPS="$STEPS" bash scripts/pipeline.sh
 
 echo "################ отправляю оценки обратно — $(date '+%F %T') ################"
-tar czf - -C results --ignore-failed-read \
-  "$RUN/strongreject/judge" "$RUN/strongreject/strongreject.json" "$RUN/reports" \
-  | ssh "$HOST" "tar xzf - -C $REMOTE/results"
+# tar на macOS не знает --ignore-failed-read, поэтому отсутствующие пути отбираются заранее:
+# strongreject.json и часть отчётов появляются не на каждом наборе STEPS.
+SEND=()
+for p in "$RUN/strongreject/judge" "$RUN/strongreject/strongreject.json" "$RUN/reports" \
+         "$RUN/xstest/judge" "$RUN/xstest/xstest.json"; do
+  [[ -e "results/$p" ]] && SEND+=("$p")
+done
+[[ ${#SEND[@]} -gt 0 ]] || { echo "нечего отправлять: судья не оставил файлов" >&2; exit 1; }
+printf '  %s\n' "${SEND[@]}"
+tar czf - -C results "${SEND[@]}" | ssh "$HOST" "tar xzf - -C $REMOTE/results"
 echo "готово — $(date '+%F %T')"
