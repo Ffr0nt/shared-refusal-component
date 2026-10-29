@@ -13,5 +13,5 @@
 #
 # Конфиг зафиксирован хэшем: правка конфига без обновления CONFIG_SHA256 не запустится.
 export CONFIG=configs/qwen2.5-3b_beavertails-b1b5b6bv.yaml
-export CONFIG_SHA256=9e4d6562abbbcf0acb33828037c6551c202dea5ea44346553bfd549f494fafc0
+export CONFIG_SHA256=c1e60fcb7b860fc36b95c57dd1728e5bef16a4aac2282ec0a6d70cb8005ecf81
 exec bash "$(dirname "$0")/../scripts/pipeline.sh" "$@"

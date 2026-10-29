@@ -104,3 +104,36 @@ def test_directions_to_test_adds_union_dim_and_residual(run):
     # без новых ключей — прежний набор
     old = ablation.directions_to_test({k: sec[k] for k in ("components", "base", "select", "n_rand", "rand_seed")}, run)
     assert old.names == ["w:all", "dim_A", "dim_B", "rand_0"]
+
+
+def test_directions_to_test_adds_extra_set_from_file(run):
+    """sec['extra'] — готовые направления из файла (например общая ось двух прогонов)."""
+    import os
+
+    from conftest import SPEC
+    from shared_refusal.artifacts import DirectionSet
+    make_set(SPEC).save(run.path("directions", "directions.pt"))
+    g = torch.Generator().manual_seed(11)
+    extra = DirectionSet.from_raw(["w_pool", "w_bt⊥pool"],
+                                  [torch.randn(16, generator=g, dtype=torch.float64) for _ in range(2)],
+                                  [{"method": "component", "domain": None},
+                                   {"method": "residual", "domain": None}])
+    extra.save(run.path("component", "cross_run_directions.pt"))
+    extra.save(os.path.join(str(run.root), "абсолютный.pt"))
+
+    sec = {"components": [], "base": False, "n_rand": 0, "rand_seed": 0,
+           "extra": ["component/cross_run_directions.pt"]}
+    ds = ablation.directions_to_test(sec, run)
+    assert ds.names == ["w_pool", "w_bt⊥pool"]                 # порядок файла сохранён
+    assert torch.allclose(ds["w_pool"], extra["w_pool"])
+    assert ds.meta[1]["method"] == "residual"                  # мета доезжает до отчётов судьи
+
+    # абсолютный путь тоже принимается, и extra идёт перед base и rand
+    sec2 = {**sec, "base": True, "select": {"methods": ["dim"]}, "n_rand": 1,
+            "extra": [os.path.join(str(run.root), "абсолютный.pt")]}
+    assert ablation.directions_to_test(sec2, run).names == \
+        ["w_pool", "w_bt⊥pool", "dim_A", "dim_B", "rand_0"]
+
+    # без ключа — прежнее поведение
+    assert ablation.directions_to_test({k: sec[k] for k in ("components", "base", "n_rand", "rand_seed")},
+                                       run).names == []
