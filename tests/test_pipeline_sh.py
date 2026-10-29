@@ -68,3 +68,12 @@ def test_wait_and_launch_requires_launch_file(tmp_path):
     assert r.returncode != 0 and "launch/" in r.stderr
     r = subprocess.run(["bash", WAIT_AND_LAUNCH, str(tmp_path / "нет.sh")], capture_output=True, text=True)
     assert r.returncode != 0 and "нет launch-файла" in r.stderr
+
+JUDGE_ONE = os.path.join(REPO, "scripts", "judge_one_run.sh")
+
+
+def test_judge_one_run_requires_existing_config(tmp_path):
+    r = subprocess.run(["bash", JUDGE_ONE], capture_output=True, text=True)
+    assert r.returncode != 0 and "configs/" in r.stderr
+    r = subprocess.run(["bash", JUDGE_ONE, str(tmp_path / "нет.yaml")], capture_output=True, text=True)
+    assert r.returncode != 0 and "нет конфига" in r.stderr

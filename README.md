@@ -55,7 +55,8 @@ GPU=0 bash scripts/tmux.sh launch/qwen2.5-3b_salad-o1o2o5o6.sh     # same in tmu
 Only `GPU`, `STEPS`, `FORK`, `HF_HOME` (and `OPENROUTER_API_KEY` for `07`) come from the
 environment — none of them affects the numbers. `07_judge` needs access to OpenRouter, so it
 may run on another machine over a copy of `results/<run>/` (see
-[`docs/strongreject.md`](docs/strongreject.md)). The config is fixed in three ways:
+[`docs/strongreject.md`](docs/strongreject.md)); `scripts/judge_one_run.sh <config>` does the
+round trip for one run (fetch answers, judge, send the scores back). The config is fixed in three ways:
 
 - `scripts/pipeline.sh` refuses to start if the config no longer matches the hash in `launch/`;
 - every stage records in `manifest.json` the hash of the config sections it depends on, both
