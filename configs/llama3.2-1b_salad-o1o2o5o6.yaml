@@ -195,7 +195,7 @@ bench:
   rdo_split: {seed: 0}
   dims: [union]
   residuals: [{dim: union, component: all}]
-  n_rand: 4                           # разброс между случайными того же порядка, что эффекты
+  n_rand: 1
   rand_seed: 0
   alpha: 1.0
   tasks:
@@ -212,5 +212,3 @@ bench:
     - [w:all, dim_union]
     - [w:all, rdo:split]
     - [dim_union⊥w:all, dim_union]
-    - [w:all, rand:mean]              # rand:mean — среднее по n_rand случайным на каждом вопросе
-    - [dim_union, rand:mean]
