@@ -93,8 +93,9 @@ def save(run, cfg, task, name, res, samples):
     return sum(r["value"] for r in rows) / len(rows), len(rows)
 
 
-def report(run, cfg, task, names, rdo, split):
-    """Сводка по готовым файлам задачи; RDO с долями вопросов — одним направлением rdo:split."""
+def report(run, cfg, task, names, rdo, split, rand):
+    """Сводка по готовым файлам задачи; RDO с долями вопросов — одним направлением rdo:split,
+    при нескольких случайных — ещё rand:mean (среднее по ним на каждом вопросе)."""
     bc = cfg["bench"]
     values = {}
     for n in [NONE] + names:
@@ -105,6 +106,8 @@ def report(run, cfg, task, names, rdo, split):
         values[bench.SPLIT] = bench.merge_split(values, rdo)
     if split:
         values = {n: v for n, v in values.items() if n not in rdo}
+    if len(rand) > 1 and all(n in values for n in rand):
+        values[bench.RAND_MEAN] = bench.mean_over([values[n] for n in rand])
     if NONE not in values:
         return
     res = bench.summary(values, [tuple(x) for x in bc["pairs"]], bc["n_boot"], bc["boot_seed"], base=NONE)
@@ -178,7 +181,8 @@ def main():
                 "limit": bc["limit"], "alpha": bc["alpha"]}
     run.update_manifest("bench", m)
     for t in tasks:
-        report(run, cfg, t, ds.names, rdo, use_split)
+        report(run, cfg, t, ds.names, rdo, use_split,
+               [n for n, mm in zip(ds.names, ds.meta) if mm["method"] == "random"])
     provenance.record(run, cfg, "bench")
 
 

@@ -134,6 +134,22 @@ def test_bench_stage(setup, monkeypatch):
     assert len(calls) == 6
 
 
+def test_bench_adds_random_controls_to_existing(setup, monkeypatch):
+    """n_rand 1 -> 3: rand_0 тот же вектор и не пересчитывается, в сводке появляется rand:mean."""
+    cfg_path, run, calls = setup
+    run_main("12_bench", ["--config", cfg_path], monkeypatch)
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["bench"]["n_rand"] = 3
+    cfg["bench"]["pairs"].append(["w:all", "rand:mean"])
+    open(cfg_path, "w").write(yaml.safe_dump(cfg, allow_unicode=True))
+    run_main("12_bench", ["--config", cfg_path], monkeypatch)
+    assert len(calls) == 8                                                 # только rand_1 и rand_2
+    res = artifacts.read_json(run.path("bench", "mmlu", "summary.json"))
+    by = {r["direction"]: r for r in res["rows"]}
+    assert by["rand:mean"]["n"] == 10 and by["rand:mean"]["vs_base"]["mean"] == -1.0
+    assert res["pairs"][-1]["b"] == "rand:mean"
+
+
 def test_bench_refuses_stale_results(setup, monkeypatch):
     cfg_path, run, _ = setup
     run_main("12_bench", ["--config", cfg_path], monkeypatch)

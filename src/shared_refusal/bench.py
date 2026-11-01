@@ -19,6 +19,7 @@ import json
 from .strongreject import bootstrap_ci, rdo_split
 
 SPLIT = "rdo:split"
+RAND_MEAN = "rand:mean"
 
 
 def lm_eval_version():
@@ -84,6 +85,13 @@ def merge_split(values, names):
         assert not set(merged) & set(values[n]), f"{n}: вопросы RDO пересекаются"
         merged.update(values[n])
     return merged
+
+
+def mean_over(dirs):
+    """Среднее нескольких направлений на каждом общем вопросе (контроль rand:mean): разброс между
+    случайными векторами того же порядка, что сами эффекты, одного мало."""
+    keys = set.intersection(*(set(d) for d in dirs))
+    return {k: sum(d[k] for d in dirs) / len(dirs) for k in keys}
 
 
 def summary(values, pairs, n_boot, seed, base="none"):
