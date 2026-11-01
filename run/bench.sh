@@ -26,6 +26,7 @@ TASKS="${TASKS:-}"
 SMOKE="${SMOKE:-0}"
 export HF_TOKEN_FILE="${HF_TOKEN_FILE:-$HOME/l.boroday/.hf_token}"   # свой; модели уже в HF-кэше
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export CUDA_DEVICE_ORDER=PCI_BUS_ID      # номера GPU — как в nvidia-smi (важно для HF_MAX_MEMORY)
 cfg() { uv run python -c "import sys, yaml; c = yaml.safe_load(open(sys.argv[1])); print($2)" "$1"; }
 
 for M in $MODELS; do
