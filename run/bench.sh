@@ -12,6 +12,8 @@
 #   GPU     индекс карты, обязателен;
 #   MODELS  имена конфигов без _salad-o1o2o5o6.yaml (по умолчанию все 7, от малых к большим);
 #   TASKS   подмножество bench.tasks (по умолчанию все);
+#   HF_MAX_MEMORY  потолок весов на видимых картах при делении модели, напр. "0:9GiB,1:22GiB"
+#           (shared_refusal.models.max_memory); на числа не влияет;
 #   SMOKE=1 копия конфига с bench.limit = 20 в отдельный запуск <имя>_smoke и для сверки «none» —
 #           обычный lm_eval с теми же флагами в results/<имя>_smoke/bench_cli/.
 set -euo pipefail

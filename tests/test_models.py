@@ -114,3 +114,8 @@ def test_refusal_score_sign():
     logits = torch.tensor([[10.0, 0.0, 0.0], [-10.0, 0.0, 0.0]])
     s = models.refusal_score(logits, [0])
     assert s[0] > 0 > s[1]
+
+
+def test_max_memory_parses_env_spec():
+    assert models.max_memory("0:9GiB,1:22GiB") == {0: "9GiB", 1: "22GiB"}
+    assert models.max_memory("") is None and models.max_memory(None) is None
