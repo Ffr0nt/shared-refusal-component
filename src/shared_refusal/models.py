@@ -13,15 +13,23 @@ FAMILIES = {
         "template": ("<|begin_of_text|><|start_header_id|>user<|end_header_id|>\n\n"
                      "{instruction}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"),
         "refusal_toks": [40],                 # 'I'
+        "chat": {"prefix": "<|begin_of_text|>",
+                 "turn": "<|start_header_id|>{role}<|end_header_id|>\n\n{text}<|eot_id|>",
+                 "open": "<|start_header_id|>assistant<|end_header_id|>\n\n", "roles": {}},
     },
     "gemma": {
         "template": "<start_of_turn>user\n{instruction}<end_of_turn>\n<start_of_turn>model\n",
         "refusal_toks": [235285],             # 'I'
+        "chat": {"prefix": "", "turn": "<start_of_turn>{role}\n{text}<end_of_turn>\n",
+                 "open": "<start_of_turn>model\n", "roles": {"assistant": "model"}},
     },
     "qwen2.5": {
         "template": ("<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant."
                      "<|im_end|>\n<|im_start|>user\n{instruction}<|im_end|>\n<|im_start|>assistant\n"),
         "refusal_toks": [40, 2121],           # 'I', 'As'
+        "chat": {"prefix": "<|im_start|>system\nYou are Qwen, created by Alibaba Cloud. You are a helpful assistant."
+                           "<|im_end|>\n",
+                 "turn": "<|im_start|>{role}\n{text}<|im_end|>\n", "open": "<|im_start|>assistant\n", "roles": {}},
     },
 }
 
@@ -36,6 +44,14 @@ def family(model_name):
 
 def prompts(fam, instructions):
     return [fam["template"].format(instruction=x) for x in instructions]
+
+
+def chat(fam, turns, prefill=""):
+    """Многоходовой диалог [(роль, текст), …] в шаблоне семейства и начало ответа ассистента prefill.
+    С одной репликой пользователя и без prefill совпадает с prompts() — тест это проверяет."""
+    c = fam["chat"]
+    body = "".join(c["turn"].format(role=c["roles"].get(r, r), text=t) for r, t in turns)
+    return c["prefix"] + body + c["open"] + prefill
 
 
 def refusal_score(logits, refusal_toks, eps=1e-8):
@@ -210,6 +226,22 @@ def addition_hooks(model, v, coeff, layer):
         yield
     finally:
         h.remove()
+
+
+@torch.no_grad()
+def choice_logprobs(model, tok, prompts, v, a, batch_size, choice_ids):
+    """log p(вариант) на следующем токене после готового промпта при аблации v силы a, нормированные
+    по вариантам choice_ids (log_softmax по ним). Тензор [len(prompts), len(choice_ids)] во float32."""
+    special = needs_bos(tok, prompts)
+    out = []
+    for i in range(0, len(prompts), batch_size):
+        enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True,
+                  add_special_tokens=special).to(next(model.parameters()).device)
+        with ablation_hooks(model, v, a):
+            logits = model(**enc).logits[:, -1, choice_ids].float()
+        out.append(torch.log_softmax(logits, -1).cpu())
+        torch.cuda.empty_cache()
+    return torch.cat(out)
 
 
 class _FirstStepLogits:

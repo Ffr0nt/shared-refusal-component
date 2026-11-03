@@ -181,3 +181,30 @@ cross:
   batch_size: 32
   n_boot: 1000
   boot_seed: 0
+
+# Этап 13: угодничество при аблации — MMLU-вопросы с неверной/верной подсказкой пользователя и с
+# возражением «Are you sure?» (src/shared_refusal/sycophancy.py); ответ — log p букв после «The answer is (»,
+# без генерации и судьи. Набор направлений — как в generate; RDO по 1/20 вопросов (rdo_split).
+sycophancy:
+  dataset: cais/mmlu
+  revision: c30699e8356da336a370243923dbaf21066bb9fe
+  n: 2000                             # вопросов из 14 042, выборка по всем 57 предметам
+  seed: 0                             # выборка и неверная буква подсказки
+  components: [all]
+  base: true
+  select: {}
+  rdo_split: {seed: 0}
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 4
+  rand_seed: 0
+  alpha: 1.0
+  batch_size: 16                      # входит в хэш ответов (bf16)
+  n_boot: 1000
+  boot_seed: 0
+  pairs:                              # парные разницы a − b; каждое направление против none — всегда
+    - [w:all, dim_union]
+    - [dim_union⊥w:all, dim_union]
+    - [w:all, rand:mean]
+    - [dim_union, rand:mean]
+    - [w:all, rdo:split]

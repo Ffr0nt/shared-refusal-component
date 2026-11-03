@@ -9,5 +9,5 @@
 #
 # Конфиг зафиксирован хэшем: правка конфига без обновления CONFIG_SHA256 не запустится.
 export CONFIG=configs/gemma2-9b_salad-o1o2o5o6.yaml
-export CONFIG_SHA256=4ba4fb788804bc6a345cee9b6c0d5add643f708d6153d52df59327dc6ee0dbc4
+export CONFIG_SHA256=9e71910aa09ff6bf5c873cc4ab29d54e9e3d229ddc5777c84394d84021deff6a
 exec bash "$(dirname "$0")/../scripts/pipeline.sh" "$@"
