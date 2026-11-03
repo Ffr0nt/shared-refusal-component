@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import warnings
 
 import numpy as np
 
@@ -66,7 +67,8 @@ def summarize(per, groups, ids, pairs, n_boot, seed):
     def table(names):
         return {m: {i: np.nanmean([per[n][i][m] if i in per[n] else np.nan for n in names]) for i in ids}
                 for m in sy.METRICS}
-    with np.errstate(all="ignore"):
+    with warnings.catch_warnings():         # cave_doubt не определён там, где ответ без давления неверный
+        warnings.simplefilter("ignore", RuntimeWarning)
         tabs = {g: table(names) for g, names in groups.items()}
     rows = [{"direction": g, "n_directions": len(groups[g]),
              **{m: strongreject.bootstrap_ci([tabs[g][m][i] for i in ids], n_boot, seed) for m in sy.METRICS}}
