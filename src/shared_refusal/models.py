@@ -142,6 +142,16 @@ def resid_at(model, prompts, layer, pos, batch_size):
 # Для генерации — обычная HF-модель с forward-хуками torch: та же аблация, что ablate()
 # (вход блока, выход attn, выход mlp), но на каждом шаге декодирования, с KV-кэшем.
 
+def max_memory(spec):
+    """HF_MAX_MEMORY="0:9GiB,1:22GiB" -> {0: "9GiB", 1: "22GiB"} — потолок весов на видимых картах
+    для device_map="auto" (индексы — среди CUDA_VISIBLE_DEVICES). Нужен, когда модель делится
+    между занятыми картами: auto забивает каждую почти до предела, и на логиты lm_head (float32,
+    батч × длина × словарь) места не остаётся. Где лежат слои, на числа не влияет."""
+    if not spec:
+        return None
+    return {int(k): v for k, v in (x.split(":") for x in spec.split(","))}
+
+
 def load_hf(model_name, revision):
     """HF-модель в bf16 на зафиксированной ревизии и токенизатор с паддингом слева."""
     import os
@@ -153,7 +163,8 @@ def load_hf(model_name, revision):
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(model_name, revision=revision, cache_dir=cache,
-                                                 torch_dtype=torch.bfloat16, device_map="auto")
+                                                 torch_dtype=torch.bfloat16, device_map="auto",
+                                                 max_memory=max_memory(os.getenv("HF_MAX_MEMORY")))
     model.requires_grad_(False)
     model.eval()
     return model, tok

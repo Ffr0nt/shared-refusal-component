@@ -27,6 +27,7 @@ OWN = {"data": ("dataset", "domains", "splits"),
        "induce": ("induce",),
        "cross": ("cross",),
        "judge_induce": ("judge",),
+       "bench": ("bench",),
        "sycophancy": ("sycophancy",)}
 UPSTREAM = {"data": (),
             "directions": ("data",),
@@ -40,6 +41,7 @@ UPSTREAM = {"data": (),
             "induce": ("data", "directions", "component"),
             "cross": ("data", "directions", "component", "decompose"),
             "judge_induce": ("induce",),
+            "bench": ("data", "directions", "component"),
             "sycophancy": ("data", "directions", "component")}
 
 

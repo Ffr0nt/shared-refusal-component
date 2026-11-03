@@ -11,6 +11,7 @@ dependencies = [
     "geometry-of-refusal",
     "datasets>=3.0",
     "openai>=1.40",             # клиент OpenRouter для судьи StrongREJECT (этап 07)
+    "lm-eval[hf]==0.4.13",      # бенчмарки этапа 12; версия фиксирована: промпты и метрики задач меняются
     "pandas",
     "pyyaml",
 ]

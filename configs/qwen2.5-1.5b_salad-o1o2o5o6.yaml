@@ -184,6 +184,38 @@ cross:
   n_boot: 1000
   boot_seed: 0
 
+# Этап 12: полезность при аблации — бенчмарки lm-evaluation-harness (версия — в pyproject) через
+# хуки аблации, только α = 1 во всех слоях. Набор направлений — как в generate; RDO по 1/20 вопросов
+# каждой подзадачи (rdo_split), вместе — оценка среднего RDO. tasks: имя задачи lm-eval ->
+# num_fewshot, метрика по вопросу и фильтр ответа (для парных разниц бутстрепом по вопросам).
+bench:
+  components: [all]
+  base: true
+  select: {}
+  rdo_split: {seed: 0}
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 4                           # разброс между случайными того же порядка, что эффекты
+  rand_seed: 0
+  alpha: 1.0
+  tasks:
+    mmlu: {num_fewshot: 0, metric: acc, filter: none}
+    gsm8k: {num_fewshot: 5, metric: exact_match, filter: flexible-extract}
+    truthfulqa_mc2: {num_fewshot: 0, metric: acc, filter: none}
+    arc_challenge: {num_fewshot: 0, metric: acc_norm, filter: none}
+  apply_chat_template: true           # как у Wollschläger
+  fewshot_as_multiturn: true          # few-shot примеры — отдельными репликами чата
+  batch_size: 16                      # фиксированный, входит в хэш (bf16)
+  limit: null                         # для дымового теста — 20 (run/bench.sh SMOKE=1)
+  n_boot: 1000
+  boot_seed: 0
+  pairs:                              # парные разницы a − b; каждое направление против none — всегда
+    - [w:all, dim_union]
+    - [w:all, rdo:split]
+    - [dim_union⊥w:all, dim_union]
+    - [w:all, rand:mean]              # rand:mean — среднее по n_rand случайным на каждом вопросе
+    - [dim_union, rand:mean]
+
 # Этап 13: угодничество при аблации — MMLU-вопросы с неверной/верной подсказкой пользователя и с
 # возражением «Are you sure?» (src/shared_refusal/sycophancy.py); ответ — log p букв после «The answer is (»,
 # без генерации и судьи. Набор направлений — как в generate; RDO по 1/20 вопросов (rdo_split).
