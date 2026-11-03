@@ -165,3 +165,20 @@ def test_bench_prefetch_only_needs_no_model(setup, monkeypatch):
     monkeypatch.setattr(models, "load_hf", lambda name, rev: pytest.fail("prefetch не грузит модель"))
     run_main("12_bench", ["--config", cfg_path, "--prefetch-only"], monkeypatch)
     assert calls == [] and "bench" not in run.manifest()
+
+
+def test_bench_task_directions_subset(setup, monkeypatch):
+    """tasks.<задача>.directions сужает набор: none всегда, rdo:split — все RDO долями; в хэш не входит."""
+    cfg_path, run, calls = setup
+    cfg = yaml.safe_load(open(cfg_path))
+    cfg["bench"]["tasks"]["mmlu"]["directions"] = ["w:all", "rdo:split"]
+    open(cfg_path, "w").write(yaml.safe_dump(cfg, allow_unicode=True))
+    run_main("12_bench", ["--config", cfg_path], monkeypatch)
+    m = run.manifest()["bench"]["mmlu"]
+    assert m["directions"] == ["none", "w:all", "rdo_A_s01", "rdo_A_s02"] and len(calls) == 4
+    res = artifacts.read_json(run.path("bench", "mmlu", "summary.json"))
+    assert {r["direction"] for r in res["rows"]} == {"none", "w:all", "rdo:split"}
+    del cfg["bench"]["tasks"]["mmlu"]["directions"]                      # потом — все: досчитываются только новые
+    open(cfg_path, "w").write(yaml.safe_dump(cfg, allow_unicode=True))
+    run_main("12_bench", ["--config", cfg_path], monkeypatch)
+    assert len(calls) == 6

@@ -15,6 +15,10 @@ simple_evaluate): вместе сиды покрывают набор один �
 хэши, ответ), сводку bench/<задача>/summary.json и reports/bench-<задача>.md: среднее с 95% ДИ и
 парные разницы бутстрепом по вопросам. Готовые файлы пропускаются.
 
+У задачи можно сузить набор: bench.tasks.<задача>.directions — список имён (none считается всегда;
+«rdo:split» — все RDO с долями вопросов). Дорогим генеративным задачам (GSM8K) нужны не все направления.
+В хэш задачи этот список не входит: направления можно добавить к готовым.
+
     --tasks mmlu     только эти задачи из bench.tasks (на числа не влияет)
     --prefetch-only  скачать датасеты задач в HF-кэш и выйти (CPU, нужна сеть)
 """
@@ -41,9 +45,21 @@ def task_hash(cfg, task):
     lm-eval. batch_size включён: в bf16 разбиение на батчи сдвигает числа. Набор направлений не
     включён — к готовым ответам можно добавить направления."""
     bc = cfg["bench"]
-    payload = {"task": task, "params": bc["tasks"][task], **{k: bc.get(k) for k in KEYS},
+    params = {k: v for k, v in bc["tasks"][task].items() if k != "directions"}
+    payload = {"task": task, "params": params, **{k: bc.get(k) for k in KEYS},
                "lm_eval": bench.lm_eval_version()}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def task_directions(bc, task, ds):
+    """Имена направлений задачи (без none): все из набора или только перечисленные в tasks.<задача>.directions."""
+    only = bc["tasks"][task].get("directions")
+    if only is None:
+        return list(ds.names)
+    keep = [n for n, mm in zip(ds.names, ds.meta) if n in only or (mm["method"] == "rdo" and bench.SPLIT in only)]
+    missing = set(only) - set(keep) - {NONE, bench.SPLIT}
+    assert not missing, f"{task}: направлений {sorted(missing)} нет в наборе"
+    return keep
 
 
 def check_own(run, cfg, task):
@@ -154,10 +170,12 @@ def main():
     use_split = bool(bc.get("rdo_split")) and bool(rdo)
     splits = {t: bench.split_samples(bench.pool(sizes[t], bc["limit"]), rdo, bc["rdo_split"]["seed"])
               if use_split else {} for t in tasks}
-    todo = [(t, n, v) for t in tasks for n, v in [(NONE, None)] + list(zip(ds.names, ds.V))
+    names = {t: task_directions(bc, t, ds) for t in tasks}
+    vec = dict(zip(ds.names, ds.V))
+    todo = [(t, n, vec.get(n)) for t in tasks for n in [NONE] + names[t]
             if not done(run, cfg, t, n, splits[t].get(n))]
-    n_all = len(tasks) * (len(ds) + 1)
-    print(f"задач {len(tasks)} × направлений {len(ds) + 1}, уже готово {n_all - len(todo)}"
+    n_all = sum(len(names[t]) + 1 for t in tasks)
+    print(f"задач {len(tasks)}, прогонов {n_all}, уже готово {n_all - len(todo)}"
           + (f"; RDO по 1/{len(rdo)} вопросов" if use_split else ""))
 
     if todo:
@@ -177,12 +195,14 @@ def main():
     m = run.manifest().get("bench", {})
     for t in tasks:
         m[t] = {"hash": task_hash(cfg, t), "lm_eval": bench.lm_eval_version(), "sizes": sizes[t],
-                "directions": [NONE] + ds.names, "meta": meta, "rdo_split": splits[t] or None,
+                "directions": [NONE] + names[t], "meta": meta,
+                "rdo_split": {n: s for n, s in splits[t].items() if n in names[t]} or None,
                 "limit": bc["limit"], "alpha": bc["alpha"]}
     run.update_manifest("bench", m)
     for t in tasks:
-        report(run, cfg, t, ds.names, rdo, use_split,
-               [n for n, mm in zip(ds.names, ds.meta) if mm["method"] == "random"])
+        rdo_t = [n for n in rdo if n in names[t]]
+        report(run, cfg, t, names[t], rdo_t, use_split and bool(rdo_t),
+               [n for n, mm in zip(ds.names, ds.meta) if mm["method"] == "random" and n in names[t]])
     provenance.record(run, cfg, "bench")
 
 

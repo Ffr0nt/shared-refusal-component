@@ -198,7 +198,8 @@ bench:
   alpha: 1.0
   tasks:
     mmlu: {num_fewshot: 0, metric: acc, filter: none}
-    gsm8k: {num_fewshot: 5, metric: exact_match, filter: flexible-extract}
+    gsm8k: {num_fewshot: 5, metric: exact_match, filter: flexible-extract,      # генерация — дорого, набор уже
+            directions: [w:all, dim_union, 'dim_union⊥w:all', rdo:split, rand_0, rand_1]}
     truthfulqa_mc2: {num_fewshot: 0, metric: acc, filter: none}
     arc_challenge: {num_fewshot: 0, metric: acc_norm, filter: none}
   apply_chat_template: true           # как у Wollschläger
