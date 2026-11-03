@@ -237,8 +237,8 @@ def choice_logprobs(model, tok, prompts, v, a, batch_size, choice_ids):
     for i in range(0, len(prompts), batch_size):
         enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True,
                   add_special_tokens=special).to(next(model.parameters()).device)
-        with ablation_hooks(model, v, a):
-            logits = model(**enc).logits[:, -1, choice_ids].float()
+        with ablation_hooks(model, v, a):     # логиты только последней позиции: по всем — гигабайты
+            logits = model(**enc, num_logits_to_keep=1).logits[:, -1, choice_ids].float()
         out.append(torch.log_softmax(logits, -1).cpu())
         torch.cuda.empty_cache()
     return torch.cat(out)
