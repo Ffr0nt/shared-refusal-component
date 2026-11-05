@@ -61,7 +61,7 @@ rdo:
     retain_lambda: 1
     target_generation_batch_size: 64     # 512 не влезает рядом с чужими задачами; батч жадной генерации таргетов
     filter_data: true
-    filter_batch_size: 32
+    filter_batch_size: 8                # при 32 фильтрация RDO у 14B заняла всю карту (79 ГБ)
 
 # Этап 2: общая компонента — первый собственный вектор P = (1/N) sum v v^T по направлениям
 # варианта. Вариант — отбор из набора этапа 1: methods / domains / exclude (по именам).
