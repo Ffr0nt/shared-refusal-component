@@ -13,6 +13,7 @@ from shared_refusal import models
     ("Qwen/Qwen2.5-3B-Instruct", "qwen2.5"),
     ("google/gemma-2-2b-it", "gemma"),
     ("meta-llama/Meta-Llama-3-8B-Instruct", "llama-3"),
+    ("microsoft/Phi-4-mini-instruct", "phi-4"),
 ])
 def test_family_by_substring(name, key):
     assert models.family(name) is models.FAMILIES[key]

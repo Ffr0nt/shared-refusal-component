@@ -31,6 +31,10 @@ FAMILIES = {
                            "<|im_end|>\n",
                  "turn": "<|im_start|>{role}\n{text}<|im_end|>\n", "open": "<|im_start|>assistant\n", "roles": {}},
     },
+    "phi-4": {                                # chat_template модели: без системного промпта и переводов строк
+        "template": "<|user|>{instruction}<|end|><|assistant|>",
+        "refusal_toks": [40, 15390, 33680],   # 'I', "I'm" (в o200k — один токен), 'Sorry'
+    },
 }
 
 
