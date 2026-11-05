@@ -4,11 +4,12 @@
 # Вотчер: ждёт свободные карты (scripts/wait_gpus.sh), запускает модель в своей tmux-сессии
 # fz-bench-<модель> и ждёт её конца — модели по очереди, поэтому наших карт не больше двух. Готовая
 # задача пропускается (bench/<задача>/summary.json). В конце — сводка и рисунок (summary_bench, plot_bench).
-# Ход — в results/piles/bench-gemma-32b.status.
+# Ход — в results/piles/bench-gemma-32b.status. Сессии — на своём сокете tmux (-L fz): общий сокет
+# пользователя jovyan делят все, и 05.11 чей-то kill-server снял очередь посреди ARC.
 #
-#   tmux new-session -d -s fz-bench-watch "bash run/bench_gemma_32b.sh 2>&1 | tee -a results/piles/bench-gemma-32b.log"
+#   tmux -L fz new-session -d -s fz-bench-watch "bash run/bench_gemma_32b.sh 2>&1 | tee -a results/piles/bench-gemma-32b.log"
 #   tail -f results/piles/bench-gemma-32b.log         # что видит вотчер
-#   tmux attach -t fz-bench-gemma2-9b                 # прогон модели (выйти: Ctrl-b d)
+#   tmux -L fz attach -t fz-bench-gemma2-9b                 # прогон модели (выйти: Ctrl-b d)
 #
 # Env: MODELS ("gemma2-9b qwen2.5-32b"), TASKS ("arc_challenge gsm8k"), INTERVAL (10 — освободившуюся
 # карту соседи забирают за полминуты), MAX_USED_MIB, CONFIRM — как в scripts/wait_gpus.sh.
@@ -47,10 +48,10 @@ for M in $MODELS; do
   SESSION=fz-bench-$M
   LOGF=results/piles/bench-$M-$(date +%Y%m%d-%H%M%S).log
   rm -f "results/piles/.$SESSION.rc"
-  tmux new-session -d -s "$SESSION" -c "$PWD" \
+  tmux -L fz new-session -d -s "$SESSION" -c "$PWD" \
     "bash run/bench_gemma_32b.sh --job $M $GPU ${todo[*]} 2>&1 | tee $LOGF"
   log "$M на GPU $GPU — сессия $SESSION, лог $LOGF"
-  while tmux has-session -t "$SESSION" 2>/dev/null; do sleep 60; done
+  while tmux -L fz has-session -t "$SESSION" 2>/dev/null; do sleep 60; done
   rc=$(cat "results/piles/.$SESSION.rc" 2>/dev/null || echo "?"); rm -f "results/piles/.$SESSION.rc"
   if [[ "$rc" == 0 ]]; then log "ok $M"; else log "FAIL $M (rc=$rc) — см. $LOGF"; fi
 done
