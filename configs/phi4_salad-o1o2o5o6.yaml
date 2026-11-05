@@ -54,7 +54,7 @@ rdo:
     ablation_lambda: 1
     addition_lambda: 0.2
     retain_lambda: 1
-    target_generation_batch_size: 64     # 512 не влезает рядом с чужими задачами; батч жадной генерации таргетов
+    target_generation_batch_size: 512
     filter_data: true
     filter_batch_size: 32
 
