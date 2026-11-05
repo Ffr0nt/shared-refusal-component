@@ -72,6 +72,19 @@ def refusal_score(logits, refusal_toks, eps=1e-8):
     return torch.log(p + eps) - torch.log(1 - p + eps)
 
 
+def native_config(model_name, revision):
+    """Конфиг без auto_map: nnsight строит модель с trust_remote_code=True и при auto_map
+    (Phi-4-mini) взял бы modeling_*.py из репозитория модели вместо родного класса transformers."""
+    import os
+
+    from transformers import AutoConfig
+
+    cfg = AutoConfig.from_pretrained(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"))
+    if getattr(cfg, "auto_map", None):
+        delattr(cfg, "auto_map")
+    return cfg
+
+
 def load(model_name, revision):
     """nnsight-модель в bf16 на зафиксированной ревизии HF, веса уже на GPU."""
     import os
@@ -79,7 +92,7 @@ def load(model_name, revision):
     from nnsight import LanguageModel
 
     model = LanguageModel(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
-                          device_map="auto", torch_dtype=torch.bfloat16,
+                          config=native_config(model_name, revision), device_map="auto", torch_dtype=torch.bfloat16,
                           max_memory=max_memory(os.getenv("HF_MAX_MEMORY")))
     model.requires_grad_(False)
     with model.trace("Hello"):   # загрузить веса на GPU до обращения к model.device

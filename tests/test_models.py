@@ -92,12 +92,27 @@ def test_load_builds_bf16_model_freezes_and_warms_up(monkeypatch):
     monkeypatch.setitem(sys.modules, "nnsight", types.SimpleNamespace(LanguageModel=FakeLM))
     monkeypatch.setenv("HUGGINGFACE_CACHE_DIR", "/cache/hub")
     monkeypatch.setenv("HF_MAX_MEMORY", "0:9GiB,1:22GiB")
+    monkeypatch.setattr(models, "native_config", lambda name, rev: ("cfg", name, rev))
 
     m = models.load("Org/Qwen2.5-3B-Instruct", "rev1")
     assert created == {"name": "Org/Qwen2.5-3B-Instruct", "revision": "rev1", "cache_dir": "/cache/hub",
+                       "config": ("cfg", "Org/Qwen2.5-3B-Instruct", "rev1"),
                        "device_map": "auto", "torch_dtype": torch.bfloat16, "max_memory": {0: "9GiB", 1: "22GiB"}}
     assert m.grad is False
     assert m.traced == ["Hello"]
+
+
+def test_native_config_drops_auto_map(monkeypatch):
+    """С auto_map nnsight (trust_remote_code=True) взял бы код модели с хаба вместо transformers."""
+    import transformers
+
+    class Cfg:
+        def __init__(self):
+            self.model_type, self.auto_map = "phi3", {"AutoModelForCausalLM": "modeling_phi3.Phi3ForCausalLM"}
+
+    monkeypatch.setattr(transformers.AutoConfig, "from_pretrained", staticmethod(lambda *a, **kw: Cfg()))
+    cfg = models.native_config("microsoft/Phi-4-mini-instruct", "r")
+    assert not hasattr(cfg, "auto_map") and cfg.model_type == "phi3"
 
 
 def test_prompts_fill_template():
