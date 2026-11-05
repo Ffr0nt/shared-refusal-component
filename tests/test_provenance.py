@@ -39,6 +39,18 @@ def test_stage_hash_changes_only_downstream(change, affected, unaffected):
         assert P.stage_hash(a, s) == P.stage_hash(b, s), s
 
 
+def test_optional_section_absent_keeps_hash():
+    """dim_select нет в конфиге — хэши те же, что до появления секции; есть — меняется directions и ниже."""
+    a, b = cfg(), cfg(dim_select={"kl_threshold": 0.2})
+    assert "dim_select" not in a
+    for s in ["directions", "component", "generate", "bench"]:
+        assert P.stage_hash(a, s) != P.stage_hash(b, s), s
+    assert P.stage_hash(a, "data") == P.stage_hash(b, "data")
+    import hashlib, json
+    old = {k: a.get(k) for k in sorted(P.sections("directions") - {"dim_select"})}
+    assert P.stage_hash(a, "directions") == hashlib.sha256(json.dumps(old, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
 def test_check_upstream_and_record(run):
     c = cfg()
     P.check_upstream(run, c, "component")                 # ничего не записано — проверять нечего
