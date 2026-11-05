@@ -15,7 +15,8 @@ def cfg(**over):
 
 def test_sections_include_upstream():
     assert P.sections("data") == {"dataset", "domains", "splits"}
-    assert P.sections("component") == {"component", "model", "model_revision", "rdo", "dataset", "domains", "splits"}
+    assert P.sections("component") == {"component", "model", "model_revision", "rdo", "dim_select", "dataset", "domains",
+                                       "splits"}
     assert "component" in P.sections("analysis") and "ablation" not in P.sections("analysis")
     assert {"strongreject", "generate", "splits", "rdo", "component"} <= P.sections("generate")
     assert "ablation" not in P.sections("generate")
