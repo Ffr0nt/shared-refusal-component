@@ -1,7 +1,7 @@
 model: microsoft/Phi-4-mini-instruct
 model_revision: cfbefacb99257ffa30c83adab238a50856ac3083    # коммит на HF; этап 1 сверяет его с кэшем
 # Phi-4-mini (3.8B, MIT) — весь пайплайн с нуля: DIM, 20 RDO, компонента, StrongREJECT, бенчмарки
-# (run/phi4.sh). Нужен transformers >= 4.49 (partial_rotary_factor в Phi3).
+# (MODEL=phi4-mini bash run/phi4.sh). Нужен transformers >= 4.49 (partial_rotary_factor в Phi3).
 
 # Источник harmful: HF-датасет и его колонки (см. src/shared_refusal/data.py)
 dataset:
