@@ -255,6 +255,6 @@ read:
   components: [all]
   n_rand: 100
   rand_seed: 0
-  batch_size: 16
+  batch_size: 4                       # 16 не влезает в одну H100 вместе с весами 32B (OOM 09.11)
   n_boot: 1000
   boot_seed: 0
