@@ -69,7 +69,8 @@ def load(model_name, revision):
     from nnsight import LanguageModel
 
     model = LanguageModel(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
-                          device_map="auto", torch_dtype=torch.bfloat16)
+                          device_map="auto", torch_dtype=torch.bfloat16,
+                          max_memory=max_memory(os.getenv("HF_MAX_MEMORY")))
     model.requires_grad_(False)
     with model.trace("Hello"):   # загрузить веса на GPU до обращения к model.device
         pass
