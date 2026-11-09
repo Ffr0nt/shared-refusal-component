@@ -36,10 +36,13 @@ FAMILIES = {
     "phi-4-mini": {
         "template": "<|user|>{instruction}<|end|><|assistant|>",
         "refusal_toks": [40, 15390, 33680],   # 'I', "I'm" (в o200k — один токен), 'Sorry'
+        "chat": {"prefix": "", "turn": "<|{role}|>{text}<|end|>", "open": "<|assistant|>", "roles": {}},
     },
     "phi-4": {
         "template": "<|im_start|>user<|im_sep|>{instruction}<|im_end|><|im_start|>assistant<|im_sep|>",
         "refusal_toks": [40, 19701],          # 'I', 'Sorry' ("I'm" здесь = 'I' + "'m")
+        "chat": {"prefix": "", "turn": "<|im_start|>{role}<|im_sep|>{text}<|im_end|>",
+                 "open": "<|im_start|>assistant<|im_sep|>", "roles": {}},
     },
 }
 
