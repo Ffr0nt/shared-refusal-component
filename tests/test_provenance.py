@@ -15,7 +15,8 @@ def cfg(**over):
 
 def test_sections_include_upstream():
     assert P.sections("data") == {"dataset", "domains", "splits"}
-    assert P.sections("component") == {"component", "model", "model_revision", "rdo", "dataset", "domains", "splits"}
+    assert P.sections("component") == {"component", "model", "model_revision", "rdo", "dim_select", "dataset", "domains",
+                                       "splits"}
     assert "component" in P.sections("analysis") and "ablation" not in P.sections("analysis")
     assert {"strongreject", "generate", "splits", "rdo", "component"} <= P.sections("generate")
     assert "ablation" not in P.sections("generate")
@@ -37,6 +38,18 @@ def test_stage_hash_changes_only_downstream(change, affected, unaffected):
         assert P.stage_hash(a, s) != P.stage_hash(b, s), s
     for s in unaffected:
         assert P.stage_hash(a, s) == P.stage_hash(b, s), s
+
+
+def test_optional_section_absent_keeps_hash():
+    """dim_select нет в конфиге — хэши те же, что до появления секции; есть — меняется directions и ниже."""
+    a, b = cfg(), cfg(dim_select={"kl_threshold": 0.2})
+    assert "dim_select" not in a
+    for s in ["directions", "component", "generate", "bench"]:
+        assert P.stage_hash(a, s) != P.stage_hash(b, s), s
+    assert P.stage_hash(a, "data") == P.stage_hash(b, "data")
+    import hashlib, json
+    old = {k: a.get(k) for k in sorted(P.sections("directions") - {"dim_select"})}
+    assert P.stage_hash(a, "directions") == hashlib.sha256(json.dumps(old, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 
 def test_check_upstream_and_record(run):

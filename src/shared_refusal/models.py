@@ -31,6 +31,19 @@ FAMILIES = {
                            "<|im_end|>\n",
                  "turn": "<|im_start|>{role}\n{text}<|im_end|>\n", "open": "<|im_start|>assistant\n", "roles": {}},
     },
+    # Phi — chat_template моделей: без системного промпта и переводов строк. "phi-4-mini" раньше
+    # "phi-4": family() берёт первое совпадение подстроки.
+    "phi-4-mini": {
+        "template": "<|user|>{instruction}<|end|><|assistant|>",
+        "refusal_toks": [40, 15390, 33680],   # 'I', "I'm" (в o200k — один токен), 'Sorry'
+        "chat": {"prefix": "", "turn": "<|{role}|>{text}<|end|>", "open": "<|assistant|>", "roles": {}},
+    },
+    "phi-4": {
+        "template": "<|im_start|>user<|im_sep|>{instruction}<|im_end|><|im_start|>assistant<|im_sep|>",
+        "refusal_toks": [40, 19701],          # 'I', 'Sorry' ("I'm" здесь = 'I' + "'m")
+        "chat": {"prefix": "", "turn": "<|im_start|>{role}<|im_sep|>{text}<|im_end|>",
+                 "open": "<|im_start|>assistant<|im_sep|>", "roles": {}},
+    },
 }
 
 
@@ -62,6 +75,19 @@ def refusal_score(logits, refusal_toks, eps=1e-8):
     return torch.log(p + eps) - torch.log(1 - p + eps)
 
 
+def native_config(model_name, revision):
+    """Конфиг без auto_map: nnsight строит модель с trust_remote_code=True и при auto_map
+    (Phi-4-mini) взял бы modeling_*.py из репозитория модели вместо родного класса transformers."""
+    import os
+
+    from transformers import AutoConfig
+
+    cfg = AutoConfig.from_pretrained(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"))
+    if getattr(cfg, "auto_map", None):
+        delattr(cfg, "auto_map")
+    return cfg
+
+
 def load(model_name, revision):
     """nnsight-модель в bf16 на зафиксированной ревизии HF, веса уже на GPU."""
     import os
@@ -69,7 +95,7 @@ def load(model_name, revision):
     from nnsight import LanguageModel
 
     model = LanguageModel(model_name, revision=revision, cache_dir=os.getenv("HUGGINGFACE_CACHE_DIR"),
-                          device_map="auto", torch_dtype=torch.bfloat16,
+                          config=native_config(model_name, revision), device_map="auto", torch_dtype=torch.bfloat16,
                           max_memory=max_memory(os.getenv("HF_MAX_MEMORY")))
     model.requires_grad_(False)
     with model.trace("Hello"):   # загрузить веса на GPU до обращения к model.device

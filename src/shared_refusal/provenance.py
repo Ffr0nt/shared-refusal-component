@@ -16,7 +16,7 @@ from .artifacts import FORK, REPO
 
 # Секции конфига, от которых зависит этап сам по себе, и этапы выше по течению.
 OWN = {"data": ("dataset", "domains", "splits"),
-       "directions": ("model", "model_revision", "rdo"),
+       "directions": ("model", "model_revision", "rdo", "dim_select"),
        "component": ("component",),
        "ablation": ("ablation",),
        "analysis": (),
@@ -47,6 +47,11 @@ UPSTREAM = {"data": (),
             "read": ("data", "directions", "component")}
 
 
+# Секции, которых может не быть в конфиге: отсутствующая не входит в хэш, поэтому её появление в
+# схеме не меняет хэши уже посчитанных запусков.
+OPTIONAL = {"dim_select"}
+
+
 def sections(stage):
     """Все секции, от которых зависит этап (с учётом этапов выше по течению)."""
     out = set(OWN[stage])
@@ -56,7 +61,7 @@ def sections(stage):
 
 
 def stage_hash(cfg, stage):
-    picked = {k: cfg.get(k) for k in sorted(sections(stage))}
+    picked = {k: cfg.get(k) for k in sorted(sections(stage)) if k in cfg or k not in OPTIONAL}
     return hashlib.sha256(json.dumps(picked, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
 

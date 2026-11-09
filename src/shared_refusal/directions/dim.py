@@ -53,12 +53,13 @@ def union(mean_diffs_by_domain):
     return torch.stack(list(mean_diffs_by_domain.values())).mean(0)
 
 
-def select_point(mb, harmful_val, harmless_val, candidates, artifact_dir):
-    """Точка (pos, layer) по select_direction форка (ablation/actadd/KL на val)."""
+def select_point(mb, harmful_val, harmless_val, candidates, artifact_dir, **thresholds):
+    """Точка (pos, layer) по select_direction форка (ablation/actadd/KL на val). thresholds —
+    kl_threshold / induce_refusal_threshold / prune_layer_percentage, иначе значения форка."""
     _fork_on_path()
     from pipeline.submodules.select_direction import select_direction
     pos, layer, _ = select_direction(mb, harmful_val, harmless_val, candidates.to(mb.model.device),
-                                     artifact_dir=artifact_dir)
+                                     artifact_dir=artifact_dir, **thresholds)
     return int(pos), int(layer)
 
 

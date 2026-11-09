@@ -68,7 +68,8 @@ def compute_dim(cfg, run, fam):
     union = dim.union(mean_diffs)
     os.makedirs(os.path.join(run.dim("union"), "generate_directions"), exist_ok=True)
     torch.save(union, os.path.join(run.dim("union"), "generate_directions", "mean_diffs.pt"))
-    pos, layer = dim.select_point(mb, harmful_val, harmless_val, union, run.path("dim", "select"))
+    pos, layer = dim.select_point(mb, harmful_val, harmless_val, union, run.path("dim", "select"),
+                                  **cfg.get("dim_select", {}))
     print(f"общая точка: pos={pos} layer={layer}")
 
     norms = {}
