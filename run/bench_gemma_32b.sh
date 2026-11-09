@@ -25,7 +25,7 @@ if [[ "${1:-}" == --job ]]; then        # внутри tmux-сессии: одн
   for T in "$@"; do
     GPU=$GPU STEPS=12 bash "launch/${M}_salad-o1o2o5o6.sh" --tasks "$T" || rc=1   # сбой задачи не отменяет следующую
   done
-  echo "$rc" > "results/piles/.fz-bench-$M.rc"
+  echo "$rc" > "results/piles/.fz-bench-${M//./_}.rc"
   exit "$rc"
 fi
 
@@ -45,7 +45,7 @@ for M in $MODELS; do
   N=$(ncards "$M")
   log "жду $N карт(ы) для $M (задачи: ${todo[*]})"
   GPU=$(bash scripts/wait_gpus.sh "$N") || { log "FAIL $M — wait_gpus"; continue; }
-  SESSION=fz-bench-$M
+  SESSION=fz-bench-${M//./_}          # tmux меняет точку в имени сессии на _
   LOGF=results/piles/bench-$M-$(date +%Y%m%d-%H%M%S).log
   rm -f "results/piles/.$SESSION.rc"
   tmux -L fz new-session -d -s "$SESSION" -c "$PWD" \
