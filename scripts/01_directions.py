@@ -8,7 +8,9 @@
      кандидатам объединённой выборки (среднее mean_diffs доменов);
    - DIM домена = его mean_diffs в этой точке.
 2. RDO (rdo.py форка): одномерный конус на каждый сид, таргеты — по DIM домена, слой
-   добавления — точка из п. 1; шаблон, refusal-токены и гиперпараметры — явно.
+   добавления — точка из п. 1; шаблон, refusal-токены и гиперпараметры — явно. При
+   rdo.targets.source: dataset цели вместо этого берутся готовыми из данных и DIM в них нет
+   (directions/targets.py) — контроль того, что сходимость RDO и DIM не задана целями.
 3. Единый набор directions/directions.pt (+ стартовые векторы RDO в directions/init.pt).
 
 Готовое не пересчитывается: DIM — если есть direction.pt всех доменов и точка в manifest,
@@ -26,7 +28,7 @@ import torch
 from shared_refusal import models, provenance
 from shared_refusal.artifacts import Run, read_json, write_json
 from shared_refusal.config import load_config
-from shared_refusal.directions import assemble, dim, rdo
+from shared_refusal.directions import assemble, dim, rdo, targets
 
 
 def instructions(run, domain, harmtype, split):
@@ -107,6 +109,9 @@ def main():
         print("DIM: готово, пропуск")
     else:
         compute_dim(cfg, run, fam)
+
+    if rc.get("targets", {}).get("source") == "dataset" and any(todo_rdo.values()):
+        targets.write(cfg, run, fam, args.domains or domains)
 
     for d in args.domains or domains:
         todo = rdo.pending(run.rdo(d), rc["seeds"][d])

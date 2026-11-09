@@ -30,7 +30,9 @@ def directions_to_test(sec, run):
     sec['select'] (необязательно) — отбор из направлений этапа 1, как в component.variants.
     Необязательно: sec['dims'] — DIM из dim/<имя>/ (имя `dim_<имя>`, нужно для union, которого нет
     среди направлений этапа 1); sec['residuals'] — [{dim, component}]: остаток DIM⊥w, как в этапе 8
-    (имя `dim_<dim>⊥w:<component>`)."""
+    (имя `dim_<dim>⊥w:<component>`); sec['extra'] — пути к готовым DirectionSet (от папки
+    запуска или абсолютные): направления, которых нет в этапах 1–2, например общая ось двух
+    прогонов. Имена во всём наборе должны быть уникальны."""
     base = DirectionSet.load(run.path("directions", "directions.pt"))
     ws = [load_w(run.component(v)) for v in sec["components"]]
     ds = DirectionSet([f"w:{v}" for v in sec["components"]], torch.stack(ws) if ws else torch.empty(0, base.hidden),
@@ -45,6 +47,8 @@ def directions_to_test(sec, run):
         ds = ds + DirectionSet.from_raw([f"dim_{r['dim']}⊥w:{r['component']}" for r in res], vecs,
                                         [{"method": "residual", "domain": r["dim"], "variant": r["component"]}
                                          for r in res])
+    for path in sec.get("extra") or []:
+        ds = ds + DirectionSet.load(path if os.path.isabs(path) else run.path(path))
     if sec["base"]:
         ds = ds + base.select(**(sec.get("select") or {}))
     rand = random_directions(base.hidden, sec["n_rand"], seed=sec["rand_seed"])
