@@ -183,3 +183,78 @@ cross:
   batch_size: 16
   n_boot: 1000
   boot_seed: 0
+
+# Этап 12: полезность при аблации — бенчмарки lm-evaluation-harness (версия — в pyproject) через
+# хуки аблации, только α = 1 во всех слоях. Набор направлений — как в generate; RDO по 1/20 вопросов
+# каждой подзадачи (rdo_split), вместе — оценка среднего RDO. tasks: имя задачи lm-eval ->
+# num_fewshot, метрика по вопросу и фильтр ответа (для парных разниц бутстрепом по вопросам).
+bench:
+  components: [all]
+  base: true
+  select: {}
+  rdo_split: {seed: 0}
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 4                           # разброс между случайными того же порядка, что эффекты
+  rand_seed: 0
+  alpha: 1.0
+  tasks:
+    mmlu: {num_fewshot: 0, metric: acc, filter: none}
+    gsm8k: {num_fewshot: 5, metric: exact_match, filter: flexible-extract,      # генерация — дорого, набор уже
+            directions: [w:all, dim_union, 'dim_union⊥w:all', rdo:split, rand_0, rand_1]}
+    truthfulqa_mc2: {num_fewshot: 0, metric: acc, filter: none}
+    arc_challenge: {num_fewshot: 0, metric: acc_norm, filter: none}
+  apply_chat_template: true           # как у Wollschläger
+  fewshot_as_multiturn: true          # few-shot примеры — отдельными репликами чата
+  batch_size: 16                      # фиксированный, входит в хэш (bf16)
+  limit: null                         # для дымового теста — 20 (run/bench.sh SMOKE=1)
+  n_boot: 1000
+  boot_seed: 0
+  pairs:                              # парные разницы a − b; каждое направление против none — всегда
+    - [w:all, dim_union]
+    - [w:all, rdo:split]
+    - [dim_union⊥w:all, dim_union]
+    - [w:all, rand:mean]              # rand:mean — среднее по n_rand случайным на каждом вопросе
+    - [dim_union, rand:mean]
+
+# Этап 13: угодничество при аблации — MMLU-вопросы с неверной/верной подсказкой пользователя и с
+# возражением «Are you sure?» (src/shared_refusal/sycophancy.py); ответ — log p букв после «The answer is (»,
+# без генерации и судьи. Набор направлений — как в generate; RDO по 1/20 вопросов (rdo_split).
+sycophancy:
+  dataset: cais/mmlu
+  revision: c30699e8356da336a370243923dbaf21066bb9fe
+  n: 2000                             # вопросов из 14 042, выборка по всем 57 предметам
+  seed: 0                             # выборка и неверная буква подсказки
+  components: [all]
+  base: true
+  select: {}
+  rdo_split: {seed: 0}
+  dims: [union]
+  residuals: [{dim: union, component: all}]
+  n_rand: 4
+  rand_seed: 0
+  alpha: 1.0
+  batch_size: 16                      # входит в хэш ответов (bf16)
+  n_boot: 1000
+  boot_seed: 0
+  pairs:                              # парные разницы a − b; каждое направление против none — всегда
+    - [w:all, dim_union]
+    - [dim_union⊥w:all, dim_union]
+    - [w:all, rand:mean]
+    - [dim_union, rand:mean]
+    - [w:all, rdo:split]
+
+# Этап 14: read при одной теме — AUROC проекции в точке DIM на XSTest (unsafe против safe: тема совпадает,
+# вредность разная) и на test-сплитах SALAD; нуль — распределение по n_rand случайным направлениям
+# (src/shared_refusal/read.py). Без генерации: только активации в точке DIM.
+read:
+  dataset: walledai/XSTest
+  revision: f1d713187c61b6ae64e602d74f0b3d812cc2e8e8
+  split: test
+  dims: [union]
+  components: [all]
+  n_rand: 100
+  rand_seed: 0
+  batch_size: 16
+  n_boot: 1000
+  boot_seed: 0
