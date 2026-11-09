@@ -195,3 +195,39 @@ def decompose(alias, res):
                              f"{r['read']['auroc']:.3f}", f"{by[r['direction'] + '⊥' + w]['read']['auroc']:.3f}"]
                             for r in dom]) + [""]
     return lines
+
+
+def read(alias, res):
+    xs, sd = res["xstest"], res["salad"]
+    head = ["направление", "доля энергии DIM", "XSTest AUROC [95% ДИ]", "signed", "p (rand)",
+            "SALAD AUROC [95% ДИ]", "p (rand)"]
+
+    def cells(pair, name):
+        r = pair["rows"][name]
+        return [f"**{r['auroc']:.3f}** [{r['ci'][0]:.3f}, {r['ci'][1]:.3f}]", f"{r['signed']:.3f}", f"{r['p_rand']:.3f}"]
+
+    def null(pair):
+        n = pair["null"]
+        return f"{n['mean']:.3f} / {n['q95']:.3f} / {n['max']:.3f}"
+
+    rows = []
+    for name in xs["rows"]:
+        share = "1" if xs["rows"][name]["kind"] == "dim" else \
+            f"{1 - res['energy'][name.split('⊥w:')[1]][name.split('⊥w:')[0]]:.3f}"
+        rows.append([name, share] + cells(xs, name) + [cells(sd, name)[0], cells(sd, name)[2]])
+    rows.append([f"rand ({xs['null']['n']}): среднее / q95 / max", "—", null(xs), "—", "—", null(sd), "—"])
+    lines = [f"# Read при одной теме — {alias}", "",
+             f"Точка DIM: pos {res['point']['pos']}, слой {res['point']['layer']}. XSTest: unsafe {xs['n_pos']} против "
+             f"safe {xs['n_neg']} (тема совпадает, вредность разная); SALAD: harmful_test {sd['n_pos']} против "
+             f"harmless_test {sd['n_neg']}, как в этапе 8.", "",
+             "AUROC проекции на v̂, max(auc, 1 − auc); signed — «вредные выше вдоль v̂» без выбора знака; "
+             "p — доля случайных направлений с AUROC не ниже, (1 + k) / (1 + n).", ""]
+    lines += table(head, rows) + [""]
+    groups = xs.get("by_group", {})
+    if groups:
+        names = list(xs["rows"])
+        lines += ["XSTest по группам (тип и его контраст), AUROC:", ""]
+        lines += table(["группа", "unsafe / safe"] + names + ["rand q95"],
+                       [[g, f"{r['n_pos']} / {r['n_neg']}"] + [f"{r[n]:.3f}" for n in names] + [f"{r['rand']['q95']:.3f}"]
+                        for g, r in groups.items()]) + [""]
+    return lines

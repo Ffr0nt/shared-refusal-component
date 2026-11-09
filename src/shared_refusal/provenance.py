@@ -28,7 +28,8 @@ OWN = {"data": ("dataset", "domains", "splits"),
        "cross": ("cross",),
        "judge_induce": ("judge",),
        "bench": ("bench",),
-       "sycophancy": ("sycophancy",)}
+       "sycophancy": ("sycophancy",),
+       "read": ("read",)}
 UPSTREAM = {"data": (),
             "directions": ("data",),
             "component": ("directions",),
@@ -42,7 +43,8 @@ UPSTREAM = {"data": (),
             "cross": ("data", "directions", "component", "decompose"),
             "judge_induce": ("induce",),
             "bench": ("data", "directions", "component"),
-            "sycophancy": ("data", "directions", "component")}
+            "sycophancy": ("data", "directions", "component"),
+            "read": ("data", "directions", "component")}
 
 
 def sections(stage):

@@ -243,3 +243,18 @@ sycophancy:
     - [w:all, rand:mean]
     - [dim_union, rand:mean]
     - [w:all, rdo:split]
+
+# Этап 14: read при одной теме — AUROC проекции в точке DIM на XSTest (unsafe против safe: тема совпадает,
+# вредность разная) и на test-сплитах SALAD; нуль — распределение по n_rand случайным направлениям
+# (src/shared_refusal/read.py). Без генерации: только активации в точке DIM.
+read:
+  dataset: walledai/XSTest
+  revision: f1d713187c61b6ae64e602d74f0b3d812cc2e8e8
+  split: test
+  dims: [union]
+  components: [all]
+  n_rand: 100
+  rand_seed: 0
+  batch_size: 16
+  n_boot: 1000
+  boot_seed: 0
