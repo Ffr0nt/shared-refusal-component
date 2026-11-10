@@ -232,6 +232,6 @@ read:
   components: [all]
   n_rand: 100
   rand_seed: 0
-  batch_size: 16
+  batch_size: 4                       # Phi-4 (14B): при 16 прямой проход не влез в 53 ГБ свободных рядом с чужим процессом
   n_boot: 1000
   boot_seed: 0
