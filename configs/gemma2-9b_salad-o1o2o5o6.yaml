@@ -199,11 +199,13 @@ bench:
   rand_seed: 0
   alpha: 1.0
   tasks:
-    mmlu: {num_fewshot: 0, metric: acc, filter: none}
+    # gemma-2-9b-it после шаблона отвечает «The answer is **B…»: без префикса вероятность голой буквы — шум
+    # (MMLU 33% без вмешательства); с ним — 0.747 на 570 вопросах (bench.gen_prefix). То же для ARC
+    mmlu: {num_fewshot: 0, metric: acc, filter: none, gen_prefix: "The answer is **"}
     gsm8k: {num_fewshot: 5, metric: exact_match, filter: flexible-extract,      # генерация — дорого, набор уже
             directions: [w:all, dim_union, 'dim_union⊥w:all', rdo:split, rand_0, rand_1]}
     truthfulqa_mc2: {num_fewshot: 0, metric: acc, filter: none}
-    arc_challenge: {num_fewshot: 0, metric: acc_norm, filter: none}
+    arc_challenge: {num_fewshot: 0, metric: acc_norm, filter: none, gen_prefix: "The answer is **"}   # без префикса 0.520, с ним 0.652
   apply_chat_template: true           # как у Wollschläger
   fewshot_as_multiturn: true          # few-shot примеры — отдельными репликами чата
   batch_size: 16                      # фиксированный, входит в хэш (bf16)
