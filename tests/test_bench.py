@@ -41,6 +41,23 @@ def test_per_question_takes_one_filter():
         bench.per_question(samples, "exact_match", "none")
 
 
+def test_gen_prefix_sets_task_config_and_restores():
+    from lm_eval.api.task import ConfigurableTask
+    init = ConfigurableTask.__init__
+    calls = []
+    ConfigurableTask.__init__ = lambda self, *a, **k: setattr(self, "_config", types.SimpleNamespace(gen_prefix=None))
+    try:
+        with bench.gen_prefix("The answer is **"):
+            t = ConfigurableTask()
+            calls.append(t.config.gen_prefix)
+        calls.append(ConfigurableTask().config.gen_prefix)
+        with bench.gen_prefix(None):
+            calls.append(ConfigurableTask().config.gen_prefix)
+    finally:
+        ConfigurableTask.__init__ = init
+    assert calls == ["The answer is **", None, None]
+
+
 def test_summary_paired():
     values = {"none": {("a", i): 1.0 for i in range(4)},
               "w:all": {("a", i): float(i % 2) for i in range(4)},

@@ -13,6 +13,7 @@ lm-eval получает уже загруженную HF-модель (HFLM(pre
   samples        — пустой список для подзадачи lm-eval читает как «все вопросы», поэтому каждая
                    доля RDO обязана быть непустой.
 """
+import contextlib
 import hashlib
 import json
 
@@ -25,6 +26,29 @@ RAND_MEAN = "rand:mean"
 def lm_eval_version():
     from importlib.metadata import version
     return version("lm_eval")
+
+
+@contextlib.contextmanager
+def gen_prefix(prefix):
+    """Начало реплики ассистента (gen_prefix lm-eval) для всех подзадач задачи; None — без него.
+    simple_evaluate строит задачи сам и gen_prefix из аргументов не берёт, поэтому — на время вызова
+    в ConfigurableTask. Нужен моделям, которые не начинают ответ с буквы: gemma-2-9b-it после шаблона
+    пишет «The answer is **B…», и вероятность голой буквы в MMLU — шум (33% вместо ~75%)."""
+    if prefix is None:
+        yield
+        return
+    from lm_eval.api.task import ConfigurableTask
+    init = ConfigurableTask.__init__
+
+    def patched(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        self.config.gen_prefix = prefix
+
+    ConfigurableTask.__init__ = patched
+    try:
+        yield
+    finally:
+        ConfigurableTask.__init__ = init
 
 
 def leaf_sizes(task):

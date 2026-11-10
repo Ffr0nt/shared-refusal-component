@@ -17,7 +17,8 @@ simple_evaluate): вместе сиды покрывают набор один �
 
 У задачи можно сузить набор: bench.tasks.<задача>.directions — список имён (none считается всегда;
 «rdo:split» — все RDO с долями вопросов). Дорогим генеративным задачам (GSM8K) нужны не все направления.
-В хэш задачи этот список не входит: направления можно добавить к готовым.
+В хэш задачи этот список не входит: направления можно добавить к готовым. bench.tasks.<задача>.gen_prefix —
+начало ответа ассистента (bench.gen_prefix); входит в хэш.
 
     --tasks mmlu     только эти задачи из bench.tasks (на числа не влияет)
     --prefetch-only  скачать датасеты задач в HF-кэш и выйти (CPU, нужна сеть)
@@ -84,7 +85,7 @@ def read_jsonl(path):
 
 def evaluate(simple_evaluate, lm, model, cfg, task, v, samples):
     bc, p = cfg["bench"], cfg["bench"]["tasks"][task]
-    with models.ablation_hooks(model, v, bc["alpha"]):
+    with models.ablation_hooks(model, v, bc["alpha"]), bench.gen_prefix(p.get("gen_prefix")):
         return simple_evaluate(
             model=lm, tasks=[task], num_fewshot=p["num_fewshot"],
             apply_chat_template=bc["apply_chat_template"], fewshot_as_multiturn=bc["fewshot_as_multiturn"],
